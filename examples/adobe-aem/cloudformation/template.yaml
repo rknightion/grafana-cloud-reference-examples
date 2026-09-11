@@ -734,6 +734,12 @@ Outputs:
     Description: Redrive from here after fixing whatever failed.
     Value: !Ref DeadLetterQueue
 
+  DeadLetterQueueArn:
+    Description: >-
+      Dead-letter queue ARN. This is what `aws sqs start-message-move-task
+      --source-arn` wants, and the URL above will not do.
+    Value: !GetAtt DeadLetterQueue.Arn
+
   EventBridgePrerequisite:
     Condition: UsingEventBridge
     Description: >-

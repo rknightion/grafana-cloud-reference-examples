@@ -75,30 +75,77 @@ release:
 README = """\
 # {name}: TODO one-line description
 
-**Status: planned.** Scaffolded, not implemented.
+TODO Replace the TODOs, then set `status` in `example.yaml`. While the status is
+`planned` the conformance check exempts this example from the required file set,
+but the heading structure below is enforced as soon as it is not - so keep every
+`##` heading and keep them in this order.
 
-TODO Replace this file before changing `status` in `example.yaml`. Until then
-the conformance check exempts this example from the required file set.
+These examples are sent to customers. Lead with what it is and how to deploy it;
+the design argument belongs in "How it works", at the end.
 
-Write these sections, in this order - they are the ones a reader actually needs:
+See `docs/adding-an-example.md` for what belongs under each heading, and
+[`{template}`](https://github.com/rknightion/grafana-cloud-reference-examples/tree/main/examples/{template})
+for a worked version. Note the absolute link: a relative one that climbs out of
+this directory is dead in the released zip, which holds one README and no
+`docs/`, and `just check` rejects it.
 
-1. **What it does**, in two sentences.
-2. **What gets created**, as a list of AWS resources, and what it explicitly
-   does not touch.
-3. **Before you start** - the Grafana Cloud endpoint, tenant id and Cloud Access
-   Policy token, and the `aws secretsmanager create-secret` command. Link
-   `docs/grafana-cloud-credentials.md` rather than restating it.
-4. **Deploying**, both the Terraform and the CloudFormation path.
-5. **Configuration**, as a table of every environment variable with its default.
-6. **Labels, and what deliberately is not one.** Name the fields that go to
-   structured metadata instead, and say why. Link `docs/loki-ingestion.md`.
-7. **Costs worth knowing before you turn it on.** Loki ingest, Lambda
-   GB-seconds, CloudWatch Logs, and any per-request charge.
-8. **Operating it** - what the alarms cover, and what to do when the DLQ fills.
-9. **Limitations**, honestly.
+**Status: planned. This is a reference implementation, not a supported product.**
 
-See [`generic-s3`](../{template}) for a worked version of all nine.
+## What is in this download
+
+```
+README.md              this file
+lambda.zip             the function code, ready to deploy
+terraform/             Terraform root module, with lambda.zip beside it
+cloudformation/        a single standalone template
+MANIFEST.json          version, runtime, and the sha256 of lambda.zip
+LICENSE
+```
+
+## What you need before you start
+
+TODO A numbered list. The Grafana Cloud endpoint and numeric tenant id, a Cloud
+Access Policy token with `logs:write`, the `aws secretsmanager create-secret`
+command, and whatever this example reads from.
+
+## What this creates in your AWS account
+
+TODO The resource list, and what it explicitly does not touch.
+
+## Deploy it
+
+TODO Both the Terraform and the CloudFormation path, with real commands.
+
+## Check it worked
+
+TODO Numbered steps that each narrow the problem down: make data flow, find it
+in Loki, confirm the fields parsed, confirm nothing is stuck in the DLQ. Do not
+skip this section - it is the one customers need most.
+
+## Configuration
+
+TODO A table of every environment variable and its default, then labels and what
+deliberately is not one.
+
+## What it costs
+
+TODO Loki ingest dominates. Also Lambda GB-seconds, CloudWatch Logs, and any
+per-request charge. Name the lever that actually reduces it.
+
+## Troubleshooting
+
+TODO Symptom in bold, then cause and fix. Cover 401, a too-old timestamp, 429,
+an empty query result, and the dead-letter queue.
+
+## Limitations
+
+TODO Honestly. A named limitation is worth more than a vague reassurance.
+
+## How it works
+
+TODO The design rationale, last.
 """
+
 
 HANDLER = '''\
 """TODO what this ships, and to where.
@@ -392,11 +439,13 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Created examples/{name} ({runtime}, arm64).")
     print()
-    print("Three edits are required before it will pass `just check`:")
+    print("Four edits are required before it will pass `just check`:")
     print(f'  1. pyproject.toml: add "examples/{name}" to tool.uv.workspace.members')
     print(f'  2. release-please-config.json: add an "examples/{name}" package entry,')
     print("     and the same path with version 0.1.0 in .release-please-manifest.json")
     print(f"  3. examples/{name}/example.yaml: fill in title and summary")
+    print("  4. README.md: add a row to the example table. `just check` compares it")
+    print("     against every example.yaml, so a missing row fails the gate.")
     print()
     print("Then: just setup && just check")
     return 0

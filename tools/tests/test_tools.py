@@ -385,6 +385,166 @@ class TestScaffolder:
         assert not (isolated_examples_dir / "my-thing").exists()
 
 
+class TestReadmeContract:
+    """The example README checks.
+
+    These exist because the failures they catch are invisible in the repository
+    and only appear for the customer: a link that works here and not in the zip,
+    and a `terraform output` that does not exist.
+    """
+
+    HEADINGS = "\n".join(conformance.REQUIRED_README_HEADINGS)
+
+    def _example(self, tmp_path: Path, readme: str, outputs: str = "") -> Path:
+        example = tmp_path / "an-example"
+        (example / "terraform").mkdir(parents=True)
+        (example / "README.md").write_text(readme, encoding="utf-8")
+        if outputs:
+            (example / "terraform" / "outputs.tf").write_text(outputs, encoding="utf-8")
+        return example
+
+    def test_the_full_heading_set_passes(self, tmp_path: Path) -> None:
+        report = conformance.Report()
+        example = self._example(tmp_path, f"# Title\n\n{self.HEADINGS}\n")
+        conformance.check_readme(example, {"status": "alpha"}, report)
+        assert report.ok, report.failures
+
+    def test_a_missing_heading_fails(self, tmp_path: Path) -> None:
+        without = self.HEADINGS.replace("## Troubleshooting\n", "")
+        report = conformance.Report()
+        conformance.check_readme(
+            self._example(tmp_path, f"# Title\n\n{without}\n"), {"status": "alpha"}, report
+        )
+        assert not report.ok
+        assert "## Troubleshooting" in report.failures[0]
+
+    def test_headings_out_of_order_fail(self, tmp_path: Path) -> None:
+        """A customer who has read one example navigates the next by shape."""
+        reordered = list(conformance.REQUIRED_README_HEADINGS)
+        reordered[0], reordered[-1] = reordered[-1], reordered[0]
+        report = conformance.Report()
+        conformance.check_readme(
+            self._example(tmp_path, "# Title\n\n" + "\n".join(reordered) + "\n"),
+            {"status": "alpha"},
+            report,
+        )
+        assert not report.ok
+        assert "out of order" in " ".join(report.failures)
+
+    def test_a_planned_example_is_exempt_from_the_headings(self, tmp_path: Path) -> None:
+        report = conformance.Report()
+        conformance.check_readme(
+            self._example(tmp_path, "# Title\n\nNot written yet.\n"),
+            {"status": "planned"},
+            report,
+        )
+        assert report.ok, report.failures
+
+    @pytest.mark.parametrize(
+        "link",
+        [
+            "](../../docs/loki-ingestion.md)",
+            "](../generic-s3)",
+            "](  ../../LICENSE)",
+            "](<../../docs/x.md>)",
+        ],
+    )
+    def test_a_link_escaping_the_example_fails(self, tmp_path: Path, link: str) -> None:
+        """The bundle holds one README and no docs/, so these are dead on delivery."""
+        report = conformance.Report()
+        conformance.check_readme(
+            self._example(tmp_path, f"# Title\n\n{self.HEADINGS}\n\n[x{link}\n"),
+            {"status": "alpha"},
+            report,
+        )
+        assert not report.ok
+        assert "climbs out of the example directory" in " ".join(report.failures)
+
+    @pytest.mark.parametrize(
+        ("target", "escapes"),
+        [
+            ("../../docs/x.md", True),
+            # Normalised, not pattern-matched: neither of the next two starts
+            # with `../`, and both escape.
+            ("./../../docs/x.md", True),
+            ("../generic-s3", True),
+            ("../x.md#frag", True),
+            ("./terraform/main.tf", False),
+            ("terraform/main.tf", False),
+            ("dashboards/x.json#L3", False),
+            ("#anchor", False),
+            ("https://example.com/a", False),
+            ("mailto:a@b.c", False),
+            ("/abs/path", False),
+            ("", False),
+        ],
+    )
+    def test_link_target_normalisation(self, target: str, escapes: bool) -> None:
+        assert conformance._escapes_example_directory(target) is escapes
+
+    @pytest.mark.parametrize("link", ["](./terraform/main.tf)", "](https://example.com/x)"])
+    def test_links_that_survive_the_zip_pass(self, tmp_path: Path, link: str) -> None:
+        report = conformance.Report()
+        conformance.check_readme(
+            self._example(tmp_path, f"# Title\n\n{self.HEADINGS}\n\n[x{link}\n"),
+            {"status": "alpha"},
+            report,
+        )
+        assert report.ok, report.failures
+
+    def test_a_planned_example_is_not_exempt_from_the_link_rule(self, tmp_path: Path) -> None:
+        """A broken link is broken whether or not the code exists yet."""
+        report = conformance.Report()
+        conformance.check_readme(
+            self._example(tmp_path, "# Title\n\n[x](../../docs/x.md)\n"),
+            {"status": "planned"},
+            report,
+        )
+        assert not report.ok
+
+    def test_an_undeclared_terraform_output_fails(self, tmp_path: Path) -> None:
+        report = conformance.Report()
+        example = self._example(
+            tmp_path,
+            f"# Title\n\n{self.HEADINGS}\n\n`terraform output -raw dlq_arn`\n",
+            outputs='output "dlq_url" {\n  value = 1\n}\n',
+        )
+        conformance.check_readme(example, {"status": "alpha"}, report)
+        assert not report.ok
+        assert "dlq_arn" in report.failures[0]
+
+    def test_a_declared_terraform_output_passes(self, tmp_path: Path) -> None:
+        report = conformance.Report()
+        example = self._example(
+            tmp_path,
+            f"# Title\n\n{self.HEADINGS}\n\n`terraform output -raw dlq_arn`\n",
+            outputs='output "dlq_arn" {\n  value = 1\n}\n',
+        )
+        conformance.check_readme(example, {"status": "alpha"}, report)
+        assert report.ok, report.failures
+
+
+class TestRootReadmeTable:
+    def test_the_real_table_agrees_with_every_manifest(self) -> None:
+        """It said adobe-aem was `planned` long after it was not."""
+        report = conformance.Report()
+        conformance.check_root_readme(report)
+        assert report.ok, report.failures
+
+    def test_the_row_regex_reads_name_runtime_and_status(self) -> None:
+        row = "| [`generic-s3`](examples/generic-s3) | Ships things | `python3.14` | alpha |"
+        match = conformance._ROOT_TABLE_ROW.search(row)
+        assert match is not None
+        assert match.group("name") == "generic-s3"
+        assert match.group("runtime") == "python3.14"
+        assert match.group("status") == "alpha"
+
+    def test_a_row_whose_link_does_not_match_its_name_is_not_read(self) -> None:
+        """Guards against a copy-paste that points one example's row at another."""
+        row = "| [`generic-s3`](examples/adobe-aem) | x | `python3.14` | alpha |"
+        assert conformance._ROOT_TABLE_ROW.search(row) is None
+
+
 class TestRepoState:
     def test_conformance_passes_on_the_real_repo(self) -> None:
         """The check that keeps every other check honest."""

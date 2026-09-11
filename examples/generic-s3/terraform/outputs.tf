@@ -28,6 +28,11 @@ output "dlq_url" {
   value       = module.event_source.dlq_url
 }
 
+output "dlq_arn" {
+  description = "Dead-letter queue ARN. This is what `aws sqs start-message-move-task --source-arn` wants."
+  value       = module.event_source.dlq_arn
+}
+
 output "loki_query" {
   description = "A LogQL query that returns what this function ships."
   # jsonencode rather than string interpolation, so a service_name containing a

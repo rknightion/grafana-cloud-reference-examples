@@ -11,10 +11,15 @@ adapted, not a supported product.
 
 | Example | What it does | Runtime | Status |
 | --- | --- | --- | --- |
-| [`generic-s3`](examples/generic-s3) | Ships arbitrary files landing in an S3 bucket to Grafana Cloud Loki | `python3.14` | alpha |
-| [`adobe-aem`](examples/adobe-aem) | Ships Adobe Experience Manager Cloud Service logs from S3 to Loki with parsed labels | `python3.14` | planned |
+| [`adobe-aem`](examples/adobe-aem) | Adobe Experience Manager Cloud Service logs from S3 to Loki. Parses all seven AEM log types and ships two dashboards | `python3.14` | alpha |
+| [`generic-s3`](examples/generic-s3) | Arbitrary files landing in an S3 bucket to Loki. Text, JSON Lines, JSON arrays or CSV, optionally gzipped | `python3.14` | alpha |
 
-`just examples` prints this from the manifests, which are the source of truth.
+`just examples` prints this from the `example.yaml` manifests, which are the
+source of truth; `just check` fails if this table drifts from them.
+
+**Which one do you want?** If your data is AEM Cloud Service log forwarding, take
+`adobe-aem` - it parses the formats and comes with dashboards. For anything else
+landing in S3, start from `generic-s3` and add a parser.
 
 ## Using an example
 
@@ -27,11 +32,19 @@ equivalent single-file CloudFormation template. Pick one; they deploy the same t
 
 ```
 generic-s3-v1.2.0.zip
-├── README.md
+├── README.md               prerequisites, deploy, verify, troubleshoot
 ├── lambda.zip              ready to upload, or let the IaC upload it
 ├── terraform/              root module + vendored modules/, no backend block
-└── cloudformation/         one flat template.yaml + parameters.example.json
+├── cloudformation/         one flat template.yaml + parameters.example.json
+├── dashboards/             importable Grafana dashboards, where the example has them
+├── MANIFEST.json           version, runtime, and the sha256 of lambda.zip
+└── LICENSE
 ```
+
+Every example README follows the same shape, so once you have deployed one the
+next is familiar: what you need before you start, what it creates in your AWS
+account, deploy it, **check it worked**, configuration, what it costs,
+troubleshooting, limitations. `just check` enforces that shape.
 
 You supply a Grafana Cloud tenant id and a Cloud Access Policy token with the `logs:write` scope.
 See [`docs/grafana-cloud-credentials.md`](docs/grafana-cloud-credentials.md).

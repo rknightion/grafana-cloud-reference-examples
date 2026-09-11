@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import posixpath
 import re
 import sys
 from dataclasses import dataclass, field
@@ -216,6 +217,161 @@ def check_file_set(example_dir: Path, manifest: dict[str, Any], report: Report) 
                 report.fail(where, f"iac.{key} is not set; both IaC paths are required")
             elif not (example_dir / configured).exists():
                 report.fail(where, f"iac.{key} points at {configured!r}, which does not exist")
+
+
+# Every example README must carry these headings, in this order. The point is not
+# tidiness: these examples are sent to customers, and a customer who has read one
+# should find the next in the same shape.
+#
+# The two that get forgotten and matter most are "Check it worked" and
+# "Troubleshooting". A reference example that deploys and then leaves the reader
+# guessing whether data is arriving has not finished the job.
+REQUIRED_README_HEADINGS = (
+    "## What you need before you start",
+    "## What this creates in your AWS account",
+    "## Deploy it",
+    "## Check it worked",
+    "## Configuration",
+    "## What it costs",
+    "## Troubleshooting",
+    "## Limitations",
+    # Last on purpose. A customer who wants to deploy should not have to read
+    # past the design argument to find the instructions.
+    "## How it works",
+)
+
+# A relative link that climbs out of the example directory is DEAD in the
+# delivered artefact. `just package` copies exactly one README into the bundle,
+# beside lambda.zip, terraform/ and cloudformation/ - so `../../docs/x.md`
+# resolves to nothing on the customer's disk. It still works in the repository,
+# which is precisely why it goes unnoticed.
+#
+# Use an absolute https:// link to the published repository, or inline the
+# content. Links to files that DO ship alongside the README (./terraform/,
+# ./dashboards/) are fine.
+# Every markdown link target, so each one can be normalised before judging it.
+# Matching a leading `../` directly was not enough: `./../../docs/x.md` and
+# `<../../docs/x.md>` both escape and neither starts with `../`.
+_MARKDOWN_LINK = re.compile(r"\]\(\s*<?([^)>\s]+)>?(?:\s+\"[^\"]*\")?\s*\)")
+
+
+def _escapes_example_directory(target: str) -> bool:
+    """True when a markdown link target resolves outside the example directory.
+
+    Absolute URLs and in-page anchors are fine. Everything else is resolved
+    relative to the README's own directory, which is where it sits in the
+    released bundle.
+    """
+    if "://" in target or target.startswith(("#", "mailto:", "/")):
+        return False
+    path = target.split("#", 1)[0].split("?", 1)[0]
+    if not path:
+        return False
+    return posixpath.normpath(path).startswith("..")
+
+
+_TF_OUTPUT = re.compile(r'^output\s+"([a-z0-9_]+)"', re.MULTILINE)
+_README_OUTPUT_REF = re.compile(r"output\s+-raw\s+([a-z0-9_]+)")
+
+
+def check_readme(example_dir: Path, manifest: dict[str, Any], report: Report) -> None:
+    """Check the example README is structured and self-contained."""
+    where = f"examples/{example_dir.name}/README.md"
+    readme = example_dir / "README.md"
+    if not readme.is_file():
+        return  # check_file_set already reported it
+    text = readme.read_text(encoding="utf-8")
+
+    if manifest.get("status") != "planned":
+        found = [line.strip() for line in text.splitlines() if line.startswith("## ")]
+        missing = [h for h in REQUIRED_README_HEADINGS if h not in found]
+        if missing:
+            report.fail(
+                where,
+                "missing required heading(s): "
+                + ", ".join(repr(h) for h in missing)
+                + ". These examples go to customers; the shape is a contract so a "
+                "customer who has read one example can navigate the next.",
+            )
+        ordered = [h for h in found if h in REQUIRED_README_HEADINGS]
+        expected = [h for h in REQUIRED_README_HEADINGS if h in found]
+        if ordered != expected:
+            report.fail(where, f"headings are out of order: {ordered} != {expected}")
+
+    # A README that tells a customer to run `terraform output -raw <name>` for an
+    # output the module does not declare wastes their time on an error message
+    # that looks like their mistake. Both READMEs referenced a `dlq_arn` that did
+    # not exist.
+    declared = set()
+    for outputs in (example_dir / "terraform").glob("*.tf"):
+        declared |= set(_TF_OUTPUT.findall(outputs.read_text(encoding="utf-8")))
+    for name in sorted(set(_README_OUTPUT_REF.findall(text))):
+        if name not in declared:
+            report.fail(
+                where,
+                f"references `terraform output -raw {name}`, which the example's "
+                f"terraform/ does not declare. Declared: {sorted(declared) or 'none'}",
+            )
+
+    for match in _MARKDOWN_LINK.finditer(text):
+        if not _escapes_example_directory(match.group(1)):
+            continue
+        report.fail(
+            where,
+            f"link {match.group(1)!r} climbs out of the example directory, so it is "
+            f"broken in the released zip - that bundle holds one README and no "
+            f"docs/. Use an https:// link to the published repository, or inline it.",
+        )
+
+
+# The root README's example table claims the manifests are the source of truth.
+# It said `adobe-aem` was `planned` for as long as it took someone to notice, so
+# the claim is now checked rather than asserted. Only name, runtime and status are
+# compared: the prose column is meant to read better than a manifest summary.
+_ROOT_TABLE_ROW = re.compile(
+    r"^\|\s*\[`(?P<name>[a-z0-9-]+)`\]\(examples/(?P=name)\)\s*\|"
+    r"[^|]*\|\s*`(?P<runtime>[^`]+)`\s*\|\s*(?P<status>[a-z]+)\s*\|",
+    re.MULTILINE,
+)
+
+
+def check_root_readme(report: Report) -> None:
+    """The root README's example table must agree with every example.yaml."""
+    where = "README.md"
+    readme = REPO_ROOT / "README.md"
+    if not readme.is_file():
+        report.fail(where, "the repository has no root README.md")
+        return
+
+    listed = {
+        m.group("name"): (m.group("runtime"), m.group("status"))
+        for m in _ROOT_TABLE_ROW.finditer(readme.read_text(encoding="utf-8"))
+    }
+    actual: dict[str, tuple[str, str]] = {}
+    for example_dir in discover_examples():
+        try:
+            manifest = load_yaml(example_dir / "example.yaml")
+        except yaml.YAMLError as exc:
+            # check_manifest reports this properly, but it runs later - so
+            # without this the whole checker dies on a traceback here first.
+            report.fail(f"examples/{example_dir.name}/example.yaml", f"is not valid YAML: {exc}")
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        runtime = (manifest.get("runtime") or {}).get("identifier", "")
+        actual[example_dir.name] = (runtime, str(manifest.get("status", "")))
+
+    for name in sorted(set(actual) - set(listed)):
+        report.fail(where, f"the example table is missing {name!r}")
+    for name in sorted(set(listed) - set(actual)):
+        report.fail(where, f"the example table lists {name!r}, which is not an example")
+    for name in sorted(set(listed) & set(actual)):
+        if listed[name] != actual[name]:
+            report.fail(
+                where,
+                f"{name}: table says runtime/status {listed[name]}, "
+                f"example.yaml says {actual[name]}",
+            )
 
 
 def check_runtime_agreement(
@@ -577,12 +733,14 @@ def main(argv: list[str] | None = None) -> int:
         check_template(template_path, conformance, report)
 
     if not args.cloudformation_only:
+        check_root_readme(report)
         validator = Draft202012Validator(json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
         for example_dir in discover_examples():
             manifest = check_manifest(example_dir, validator, report)
             if manifest is None:
                 continue
             check_file_set(example_dir, manifest, report)
+            check_readme(example_dir, manifest, report)
             check_runtime_agreement(example_dir, manifest, conformance, report)
 
     if report.ok:

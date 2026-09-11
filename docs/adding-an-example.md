@@ -30,34 +30,53 @@ variable default and the CloudFormation parameter default, so a runtime bump
 applied in one place and missed in the other two fails the gate rather than
 deploying the old runtime silently.
 
-`status: planned` exempts an example from the required-file-set check. Nothing
-else is exempt. Use it for something announced but not written -
-[`adobe-aem`](../examples/adobe-aem) is the worked case - and flip it once the
-code exists.
+`status: planned` exempts an example from the required-file-set check, and from
+the README heading contract. Nothing else is exempt. Use it for something
+announced but not written, and flip it once the code exists - at which point both
+checks start applying.
 
 ## Write the README for a customer, not for us
 
 The README ships inside the release bundle and is the only documentation a
-customer reads. Nine sections, in this order:
+customer reads. **`just check` enforces the heading set and their order**, so
+this is a contract rather than a suggestion - a customer who has deployed one
+example should find the next in the same shape.
 
-1. **What it does**, in two sentences.
-2. **What gets created**, as AWS resources, and what it explicitly does not
-   touch. "It never modifies or deletes your objects" is worth stating.
-3. **Before you start** - endpoint, tenant id, token, and the
-   `aws secretsmanager create-secret` command. Link
-   [`grafana-cloud-credentials.md`](grafana-cloud-credentials.md); do not restate
-   it.
-4. **Deploying**, both paths, with real commands.
-5. **Configuration** - a table of every environment variable and its default.
-6. **Labels, and what deliberately is not one.** Name the fields that go to
-   structured metadata and why. Link [`loki-ingestion.md`](loki-ingestion.md).
-7. **Costs worth knowing before you turn it on.** Loki ingest dominates; also
-   Lambda GB-seconds, CloudWatch Logs, and per-request charges.
-8. **Operating it** - what the alarms cover, what to do when the DLQ fills.
-9. **Limitations**, honestly. A named limitation is worth more than a vague
-   reassurance.
+Required headings, in order:
 
-[`generic-s3`](../examples/generic-s3) is the worked version of all nine.
+| Heading | What goes in it |
+| --- | --- |
+| `## What is in this download` | The bundle's file tree. Not a required heading, but write it: it orients someone who has just unzipped. |
+| `## What you need before you start` | A numbered list of prerequisites, each one actionable. Endpoint, tenant id, token, the `aws secretsmanager create-secret` command, the tool versions. Anything the customer must go and get elsewhere. |
+| `## What this creates in your AWS account` | The resource list, **and what it explicitly does not touch.** "It never modifies or deletes your objects" is worth stating. |
+| `## Deploy it` | Both IaC paths, with real copy-pasteable commands. |
+| `## Check it worked` | Numbered steps that each narrow the problem down: make data flow, find it in Loki, confirm the fields parsed, confirm nothing is stuck. **This is the section people skip and the one customers need most.** |
+| `## Configuration` | A table of every environment variable and its default. Then labels, and what deliberately is not one. |
+| `## What it costs` | Loki ingest dominates; also Lambda GB-seconds, CloudWatch Logs and per-request charges. Name the lever that actually reduces it. |
+| `## Troubleshooting` | Symptom first, in bold, then cause and fix. Cover 401, a too-old timestamp, 429, an empty query result, and the dead-letter queue. |
+| `## Limitations` | Honestly. A named limitation is worth more than a vague reassurance. |
+| `## How it works` | Design rationale, **last**. The customer wanting to deploy should not have to read past it. |
+
+Two more rules, both checked:
+
+**No relative link may climb out of the example directory.** `just package`
+copies exactly one README into the bundle, beside `lambda.zip`, `terraform/` and
+`cloudformation/`. A `../../docs/x.md` link resolves to nothing on the customer's
+disk while still working in the repository, which is why it goes unnoticed. Use
+an absolute `https://github.com/rknightion/grafana-cloud-reference-examples/...`
+link, or inline the content. Prefer inlining anything a customer needs while
+following the steps; save the link for depth.
+
+**Every `terraform output -raw <name>` you mention must exist.** Telling a
+customer to run an output the module does not declare wastes their time on an
+error that looks like their own mistake.
+
+Lead with the answer, not the reasoning. The customer wants to know what this
+is, whether it fits, and how to deploy it; the design argument is for the
+engineer who comes back later.
+
+[`generic-s3`](../examples/generic-s3) and
+[`adobe-aem`](../examples/adobe-aem) are the worked versions.
 
 ## Reuse, do not fork
 
