@@ -67,6 +67,34 @@ check: public-release-scan fmt-check lint test
 public-release-scan:
     ./scripts/public-release-scan.sh
 
+# Regenerate the adobe-aem dashboards from dev/build_dashboards.py.
+[group('gen')]
+aem-dashboards:
+    # --all-packages, and no `cd`: `uv run` from inside a workspace member syncs
+    # the environment down to that member and silently uninstalls the others, so
+    # a bare `cd examples/adobe-aem && uv run ...` leaves `just test` failing
+    # with ModuleNotFoundError for every other example.
+    uv run --all-packages python examples/adobe-aem/dev/build_dashboards.py
+
+# Sanitise real Adobe AEM logs into committable fixtures. Run the publication scan afterwards; this is best-effort and the scan is the gate.
+[group('gen')]
+sanitise-aem-logs source destination="examples/adobe-aem/fixtures" limit="250":
+    # --ip-addresses replace, which is NOT the tool's default.
+    #
+    # Keeping client addresses is right for a Loki tenant: they are ordinary
+    # operational telemetry. This recipe produces a corpus for a PUBLIC
+    # repository, so the addresses would be real visitors to a customer's site
+    # republished somewhere they were never meant to go. That is the one case
+    # the flag exists for.
+    uv run python tools/sanitise_aem_logs.py "{{ source }}" "{{ destination }}" \
+      --limit "{{ limit }}" --ip-addresses replace
+
+# Push adobe-aem data to Loki from this machine, with no AWS. mode is `fixtures` or `synth`.
+[group('dev')]
+aem-push mode="fixtures" *args="":
+    # --all-packages: see the note on aem-dashboards.
+    uv run --all-packages python examples/adobe-aem/dev/run_local.py {{ mode }} {{ args }}
+
 # List every example and the runtime it targets.
 [group('dev')]
 examples:

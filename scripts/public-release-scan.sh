@@ -30,6 +30,44 @@ cd "$repo_root"
 self="scripts/public-release-scan.sh"
 failed=0
 
+# Every working-tree search runs with these. Two of them are load-bearing.
+#
+# `--no-ignore` is here because ripgrep honours ignore files by default, which
+# made this scan blind to whole classes of file. It is `--no-ignore` rather than
+# the narrower `--no-ignore-vcs` because that one still honours `.ignore` and
+# `.rgignore`, neither of which is a VCS ignore - so one `.ignore` file could
+# blind this control while leaving `.gitignore` untouched. This repository's .gitignore
+# carries a blanket `*.log` from the upstream Python template, so every committed
+# log fixture was invisible to the working-tree half of the scan while being
+# perfectly publishable - `git add -f` is all it takes, and the history half only
+# notices once the commit already exists. An ignore rule is a convenience for the
+# developer; it is not a statement that a file cannot be published, so it must not
+# decide what gets inspected.
+#
+# The exclusions below then re-add what the ignore file was usefully doing: the
+# build, dependency and state directories. Each is written `**/name/**` rather
+# than `name/**`, because a glob containing a slash is anchored to the search
+# root - so the unanchored form left every nested build directory scanned. Those are generated, enormous, and not
+# publishable content. Anything ignored for any *other* reason is now scanned.
+declare -a RG_ARGS=(
+  --hidden
+  --no-ignore
+  --glob '!.git/**'
+  --glob '!**/dist/**'
+  --glob '!**/build/**'
+  --glob '!**/node_modules/**'
+  --glob '!**/.venv/**'
+  --glob '!**/.tools/**'
+  --glob '!**/__pycache__/**'
+  --glob '!**/.pytest_cache/**'
+  --glob '!**/.mypy_cache/**'
+  --glob '!**/.ruff_cache/**'
+  --glob '!**/.terraform/**'
+  --glob '!uv.lock'
+  --glob '!package-lock.json'
+  --glob "!${self}"
+)
+
 history_revisions=()
 while IFS= read -r revision; do
   history_revisions+=("$revision")
@@ -67,7 +105,7 @@ search_or_die() {
 scan_fixed() {
   local label=$1 pattern=$2
   local hits
-  hits=$(search_or_die rg --hidden --glob '!.git/**' --glob "!${self}" -n -i -F -- "$pattern" .)
+  hits=$(search_or_die rg "${RG_ARGS[@]}" -n -i -F -- "$pattern" .)
   if [[ -n $hits ]]; then
     printf '%s\n' "$hits"
     echo "public-release scan: found $label in the working tree" >&2
@@ -87,7 +125,7 @@ scan_fixed() {
 scan_fixed_case_sensitive() {
   local label=$1 pattern=$2
   local hits
-  hits=$(search_or_die rg --hidden --glob '!.git/**' --glob "!${self}" -n -F -- "$pattern" .)
+  hits=$(search_or_die rg "${RG_ARGS[@]}" -n -F -- "$pattern" .)
   if [[ -n $hits ]]; then
     printf '%s\n' "$hits"
     echo "public-release scan: found $label in the working tree" >&2
@@ -107,7 +145,7 @@ scan_fixed_case_sensitive() {
 scan_regex() {
   local label=$1 pattern=$2
   local hits
-  hits=$(search_or_die rg --hidden --glob '!.git/**' --glob '!LICENSE' --glob "!${self}" \
+  hits=$(search_or_die rg "${RG_ARGS[@]}" --glob '!LICENSE' \
     -n -- "$pattern" .)
   if [[ -n $hits ]]; then
     printf '%s\n' "$hits"
@@ -128,7 +166,7 @@ scan_regex() {
 scan_regex_ignorecase() {
   local label=$1 pattern=$2
   local hits
-  hits=$(search_or_die rg --hidden --glob '!.git/**' --glob '!LICENSE' --glob "!${self}" \
+  hits=$(search_or_die rg "${RG_ARGS[@]}" --glob '!LICENSE' \
     -n -i -- "$pattern" .)
   if [[ -n $hits ]]; then
     printf '%s\n' "$hits"
@@ -252,7 +290,7 @@ scan_regex "a private IPv4 endpoint" \
 scan_regex_excluding() {
   local label=$1 pattern=$2 allowed=$3
   local hits filtered
-  hits=$(search_or_die rg --hidden --glob '!.git/**' --glob '!LICENSE' --glob "!${self}" \
+  hits=$(search_or_die rg "${RG_ARGS[@]}" --glob '!LICENSE' \
     -n -- "$pattern" .)
   filtered=$(printf '%s' "$hits" | rg -v -- "$allowed" || true)
   if [[ -n $filtered ]]; then

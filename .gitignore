@@ -57,6 +57,10 @@ cover/
 
 # Django stuff:
 *.log
+# Sanitised log fixtures are real, committed test data. The blanket `*.log` above
+# came in with the upstream Python template and would have silently dropped every
+# one of them from the commit.
+!examples/*/fixtures/*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal

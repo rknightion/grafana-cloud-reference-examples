@@ -430,6 +430,30 @@ def build_cloudformation(example: Example, bundle: Path) -> None:
         shutil.copy2(extra, target_dir / extra.name)
 
 
+def build_dashboards(example: Example, bundle: Path) -> list[str]:
+    """Copy an example's `dashboards/` into the bundle, if it has one.
+
+    Optional on purpose: an example that ships no dashboards is not defective,
+    and requiring an empty directory would just add one to every example. The
+    returned list goes into MANIFEST.json so the bundle says what it contains.
+
+    Only `.json` is copied. A dashboard is imported through Grafana's API or the
+    UI, so anything else in that directory is working material rather than part
+    of the deliverable.
+    """
+    source = example.directory / "dashboards"
+    if not source.is_dir():
+        return []
+    found = sorted(path for path in source.glob("*.json") if path.is_file())
+    if not found:
+        return []
+    target = bundle / "dashboards"
+    target.mkdir(parents=True, exist_ok=True)
+    for path in found:
+        shutil.copy2(path, target / path.name)
+    return [path.name for path in found]
+
+
 def package(example: Example, out_dir: Path) -> Path:
     version = example.version
     bundle_name = f"{example.name}-{version}"
@@ -447,6 +471,7 @@ def package(example: Example, out_dir: Path) -> Path:
 
         shutil.copy2(example.directory / "README.md", bundle / "README.md")
         shutil.copy2(REPO_ROOT / "LICENSE", bundle / "LICENSE")
+        dashboards = build_dashboards(example, bundle)
 
         manifest = {
             "example": example.name,
@@ -459,6 +484,7 @@ def package(example: Example, out_dir: Path) -> Path:
             "lambda_zip_sha256": sha256_of(lambda_zip),
             "lambda_zip_bytes": lambda_zip.stat().st_size,
             "vendored_terraform_modules": vendored_modules,
+            "dashboards": dashboards,
             "source_commit": _git_commit(),
             # Not a build timestamp: a timestamp would make every bundle unique
             # and defeat the point of a deterministic archive.

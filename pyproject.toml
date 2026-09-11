@@ -23,7 +23,7 @@ bypass-selection = true
 # Every Python example is a member. `just new-example` appends to this list;
 # a glob is deliberately not used, because a Node or Go example has no
 # pyproject.toml and uv treats an unmatched member directory as an error.
-members = ["common/python", "examples/generic-s3"]
+members = ["common/python", "examples/adobe-aem", "examples/generic-s3"]
 
 [tool.uv.sources]
 grafana-cloud-common = { workspace = true }
@@ -79,6 +79,9 @@ select = [
 # invoke uv, terraform and git from PATH on purpose (S603/S607) because pinning
 # an absolute path would break on every machine but the author's.
 "tools/*.py" = ["T20", "S603", "S607"]
+# dev/ holds developer CLIs: stdout is the deliverable (T20), and the synthetic
+# log generator is a data generator rather than a crypto primitive (S311).
+"examples/*/dev/*.py" = ["T20", "S311"]
 # Test doubles and fixtures carry obviously-fake credentials by design.
 "**/tests/**/*.py" = ["S101", "S105", "S106"]
 "**/testing.py" = ["S105", "S106"]
@@ -104,4 +107,4 @@ addopts = "-ra --strict-markers --strict-config"
 filterwarnings = ["error"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["grafana_cloud_common", "generic_s3", "adobe_aep"]
+known-first-party = ["adobe_aem", "grafana_cloud_common", "generic_s3"]
