@@ -32,7 +32,7 @@ deploying the old runtime silently.
 
 `status: planned` exempts an example from the required-file-set check. Nothing
 else is exempt. Use it for something announced but not written -
-[`adobe-aep`](../examples/adobe-aep) is the worked case - and flip it once the
+[`adobe-aem`](../examples/adobe-aem) is the worked case - and flip it once the
 code exists.
 
 ## Write the README for a customer, not for us

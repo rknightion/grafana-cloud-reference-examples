@@ -12,7 +12,7 @@ adapted, not a supported product.
 | Example | What it does | Runtime | Status |
 | --- | --- | --- | --- |
 | [`generic-s3`](examples/generic-s3) | Ships arbitrary files landing in an S3 bucket to Grafana Cloud Loki | `python3.14` | alpha |
-| [`adobe-aep`](examples/adobe-aep) | Ships Adobe Experience Platform data-landing-zone exports from S3 to Loki | `python3.14` | planned |
+| [`adobe-aem`](examples/adobe-aem) | Ships Adobe Experience Manager Cloud Service logs from S3 to Loki with parsed labels | `python3.14` | planned |
 
 `just examples` prints this from the manifests, which are the source of truth.
 

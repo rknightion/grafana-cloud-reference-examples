@@ -9,6 +9,7 @@ resolution-markers = [
 [manifest]
 members = [
     "grafana-cloud-common",
+    "grafana-cloud-example-adobe-aem",
     "grafana-cloud-example-generic-s3",
     "grafana-cloud-reference-examples",
 ]
@@ -255,6 +256,21 @@ aws = [
 [package.metadata]
 requires-dist = [{ name = "boto3", marker = "extra == 'aws'", specifier = ">=1.40.0" }]
 provides-extras = ["aws"]
+
+[[package]]
+name = "grafana-cloud-example-adobe-aem"
+version = "0.1.0"
+source = { editable = "examples/adobe-aem" }
+dependencies = [
+    { name = "boto3" },
+    { name = "grafana-cloud-common" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "boto3", specifier = ">=1.40.0" },
+    { name = "grafana-cloud-common", editable = "common/python" },
+]
 
 [[package]]
 name = "grafana-cloud-example-generic-s3"

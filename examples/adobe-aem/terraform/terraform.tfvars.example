@@ -1,0 +1,83 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored; only this
+# .example file is tracked.
+
+# The bucket Adobe AEM Cloud Service forwards into, configured in Cloud Manager.
+source_bucket_name = "acme-aem-logs"
+source_prefix      = "aem/"
+
+# Leave source_suffix empty: Adobe gzips some log types and not others, so any
+# single suffix silently excludes the rest.
+source_suffix = ""
+
+# Host, base URL or full push URL - all three are accepted.
+grafana_cloud_loki_endpoint  = "https://logs-prod-012.grafana.net"
+grafana_cloud_loki_tenant_id = "123456"
+
+# The secret must already exist. The token is never a Terraform input, so it
+# never lands in state. Create it from a file rather than inline, so the token
+# does not land in your shell history or in the process list:
+#
+#   umask 077 && cat > /tmp/gc-loki.json <<'JSON'
+#   {"tenant_id":"123456","token":"glc_..."}
+#   JSON
+#   aws secretsmanager create-secret --name grafana-cloud/loki \
+#     --secret-string file:///tmp/gc-loki.json
+#   rm -f /tmp/gc-loki.json
+credentials_secret_id = "grafana-cloud/loki"
+
+# --- AEM identity ------------------------------------------------------------
+#
+# These become the aem_program_id, aem_env_id and aem_env_type labels. Find the
+# program and environment ids in Cloud Manager, or read them off any pod name in
+# the logs: cm-p12345-e67890-aem-author-<hash>-<pod>.
+#
+# Leaving one empty omits the label rather than setting it to a placeholder. The
+# shipped dashboards drive their environment variable from aem_env_id, so it is
+# worth setting even with a single environment.
+aem_program_id = "p12345"
+aem_env_id     = "e67890"
+aem_env_type   = "prod"
+
+# Fallback only, for when the object key does not say. A tier in the key wins,
+# so one function can serve a bucket holding author, publish and preview.
+# aem_tier = "publish"
+
+# How to read tier and log type out of an object key. Empty uses the built-in
+# default, which matches `<tier>_<logtype>_<date>.log` under any prefix.
+#
+# Set this once you know your real layout - check an actual key with:
+#   aws s3 ls s3://acme-aem-logs/aem/ --recursive | head
+#
+# Recognised groups: program_id, env_id, env_type, tier, log_type.
+# key_pattern = "p(?P<program_id>[0-9]+)/e(?P<env_id>[0-9]+)/(?P<tier>author|publish|preview)/(?P<log_type>aem[a-z]+)/"
+
+# --- Parsing -----------------------------------------------------------------
+
+service_name = "acme-aem"
+
+# raw is lossless. Switch to "message" to drop the timestamp and node id that
+# are already in structured metadata, for roughly 40% less volume on aemerror.
+line_content = "raw"
+
+# Set true where client addresses must not be stored. Costs you the geography
+# and abuse panels on the traffic dashboard.
+drop_client_ip = false
+
+# Set this before replaying a historical export, or Loki 400s every sample older
+# than a week and takes the batch with it. 518400 is six days.
+# max_timestamp_age_seconds = 518400
+
+# The function's own operational logs, not the AEM logs being shipped.
+log_level          = "INFO"
+log_retention_days = 30
+
+# Uncomment before a first run against a bucket with an existing backlog of AEM
+# logs, or the fan-out will hit Loki's per-tenant rate limit.
+# reserved_concurrency = 10
+
+# Uncomment to notify somewhere when the function errors or the DLQ fills.
+# alarm_actions = ["arn:aws:sns:eu-west-1:123456789012:platform-alerts"]
+
+tags = {
+  Owner = "platform-team"
+}

@@ -1,0 +1,781 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# adobe-aem: ship Adobe Experience Manager Cloud Service logs from S3 to Loki.
+#
+# Standalone by design. Copied from
+# common/cloudformation/templates/lambda-s3-loki.reference.yaml rather than
+# nesting it: a nested stack needs its children staged in S3 first, which would
+# break the property that makes this useful - one downloaded zip, deployable on
+# its own. `just lint` checks this template against
+# common/cloudformation/conformance.yaml so the copy cannot drift on the things
+# that matter.
+#
+# The structure is generic-s3's, because the AWS plumbing is the same problem.
+# What differs is the Parsing parameter group, which configures the AEM log
+# parsers and the Loki label contract instead of a generic record format.
+#
+# ../terraform deploys the same thing. The only real difference is that
+# CloudFormation cannot upload function code from your machine, so the zip must
+# be in S3 first; the Terraform path uploads it for you.
+
+Description: >-
+  adobe-aem: an AWS Lambda that ships Adobe Experience Manager as a Cloud
+  Service logs from their S3 forwarding destination into Grafana Cloud Loki.
+  Parses all seven AEM log types, labels streams by deployment coordinates only,
+  and puts every extracted field into structured metadata so dashboards
+  aggregate without a parse stage.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: Source }
+        Parameters: [SourceBucketName, SourcePrefix, SourceSuffix, EventWiring]
+      - Label: { default: AEM identity }
+        Parameters: [AemProgramId, AemEnvId, AemEnvType, AemTier, KeyPattern]
+      - Label: { default: Grafana Cloud }
+        Parameters:
+          - GrafanaCloudLokiEndpoint
+          - GrafanaCloudLokiTenantId
+          - CredentialsSecretId
+          - CredentialsKmsKeyArn
+          - ServiceName
+          - StaticLabelsJson
+      - Label: { default: Function code }
+        Parameters: [LambdaCodeS3Bucket, LambdaCodeS3Key, LambdaCodeS3ObjectVersion, LambdaHandler]
+      - Label: { default: Runtime and sizing }
+        Parameters:
+          - LambdaRuntime
+          - AllowPreviewRuntime
+          - Architecture
+          - MemorySize
+          - TimeoutSeconds
+          - QueueVisibilityTimeoutSeconds
+          - ReservedConcurrency
+      - Label: { default: Parsing }
+        Parameters:
+          - LineContent
+          - SniffContent
+          - CorrelateRequests
+          - MaxPendingRequests
+          - DropClientIp
+          - LogUtcOffsetSeconds
+          - MaxTimestampAgeSeconds
+          - BatchMaxLines
+          - BatchMaxBytes
+      - Label: { default: Observability }
+        Parameters: [LogLevel, LogRetentionInDays, AlarmTopicArn]
+
+Parameters:
+  # --- Source ---------------------------------------------------------------
+  SourceBucketName:
+    Type: String
+    Description: Bucket to read from. Not created by this stack; only s3:GetObject is granted.
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    ConstraintDescription: Must be a valid S3 bucket name.
+
+  SourcePrefix:
+    Type: String
+    Default: ""
+    Description: Only process keys under this prefix. Empty means the whole bucket.
+
+  SourceSuffix:
+    Type: String
+    Default: ""
+    Description: Only process keys with this suffix, for example .gz. Empty means any.
+
+  # --- AEM identity ---------------------------------------------------------
+  #
+  # These become Loki labels. An empty one omits its label rather than setting a
+  # placeholder: a label reading "unknown" still creates a stream and still
+  # looks like data on a dashboard.
+  #
+  # Find the program and environment ids in Cloud Manager, or read them off any
+  # pod name in the logs: cm-p12345-e67890-aem-author-<hash>-<pod>.
+  AemProgramId:
+    Type: String
+    Default: ""
+    Description: Cloud Manager program id, e.g. p12345, as the aem_program_id label.
+
+  AemEnvId:
+    Type: String
+    Default: ""
+    Description: >-
+      Cloud Manager environment id, e.g. e67890, as the aem_env_id label. The
+      shipped dashboards drive their environment variable from this label, so it
+      is worth setting even with a single environment.
+
+  AemEnvType:
+    Type: String
+    Default: ""
+    Description: dev, stage or prod, as the aem_env_type label.
+
+  AemTier:
+    Type: String
+    Default: ""
+    AllowedValues: ["", author, publish, preview, dispatcher]
+    Description: >-
+      Fallback aem_tier label for when the object key does not carry one. A tier
+      found in the key always wins, so one function can serve a bucket holding
+      every tier.
+
+  KeyPattern:
+    Type: String
+    Default: ""
+    Description: >-
+      Regex with named groups for reading AEM coordinates off an object key.
+      Recognised groups: program_id, env_id, env_type, tier, log_type. Empty
+      uses the built-in default, which matches Adobe's own download naming -
+      <tier>_<logtype>_<date>.log - searched rather than anchored, so any prefix
+      in front of it is ignored. Adobe does not document one S3 layout for
+      forwarded logs, so set this to match your bucket.
+
+  EventWiring:
+    Type: String
+    Default: EventBridge
+    AllowedValues: [EventBridge, Manual]
+    Description: >-
+      How objects reach the queue.
+
+      EventBridge creates an EventBridge rule that routes the bucket's Object
+      Created events to the queue. Fully declarative and safe on a shared
+      bucket, but the bucket must have EventBridge notifications enabled first.
+
+      Manual creates nothing; the stack outputs the exact CLI command to
+      subscribe the queue as a bucket notification. Use this when you cannot
+      enable EventBridge. Be aware that an S3 bucket notification configuration
+      is replaced wholesale on every write, so it will remove any subscription
+      the bucket already has.
+
+  # --- Grafana Cloud --------------------------------------------------------
+  GrafanaCloudLokiEndpoint:
+    Type: String
+    Description: >-
+      Loki host, base URL, or full push URL. All three forms are accepted, for
+      example https://logs-prod-012.grafana.net
+
+  GrafanaCloudLokiTenantId:
+    Type: String
+    Description: Numeric Loki tenant (instance) id from the stack details page. Not your email.
+    AllowedPattern: "^[0-9]+$"
+    ConstraintDescription: >-
+      The Loki tenant id is numeric. A non-numeric value here is usually the
+      username from a different integration.
+
+  CredentialsSecretId:
+    Type: String
+    Description: >-
+      Name or ARN of an EXISTING Secrets Manager secret holding the Cloud Access
+      Policy token. Create it before deploying, from a file so the token does not
+      land in your shell history:
+
+        umask 077 && printf '%s' '{"tenant_id":"123456","token":"glc_..."}' > /tmp/gc.json
+        aws secretsmanager create-secret --name grafana-cloud/loki --secret-string file:///tmp/gc.json
+        rm -f /tmp/gc.json
+
+      The token is deliberately not a parameter of this template. NoEcho does
+      mask a parameter value in DescribeStacks and DescribeStackEvents, but it
+      does not redact a value that reaches an Output, a resource property, a
+      resource identifier or template metadata - and the value still has to
+      travel through whatever CI invoked the deploy.
+
+  CredentialsKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      KMS key ARN if the secret uses a customer-managed key. Reading such a
+      secret needs kms:Decrypt as well as secretsmanager:GetSecretValue; without
+      it the failure names Secrets Manager and sends you to the wrong policy.
+
+  ServiceName:
+    Type: String
+    Default: adobe-aem
+    Description: Value of the service_name Loki label.
+
+  StaticLabelsJson:
+    Type: String
+    Default: "{}"
+    Description: >-
+      JSON object of extra Loki labels, for example {"env":"prod"}. Low
+      cardinality only. A label that varies per object or per record creates one
+      Loki stream per value; the function rejects such a label rather than
+      letting you discover it on the bill.
+
+  # --- Function code --------------------------------------------------------
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: >-
+      Bucket holding the deployment zip. CloudFormation cannot upload code from
+      your machine, so the zip must be in S3 first. The Terraform path in this
+      example does the upload for you.
+
+  LambdaCodeS3Key:
+    Type: String
+    Description: Key of the deployment zip.
+
+  LambdaCodeS3ObjectVersion:
+    Type: String
+    Default: ""
+    Description: >-
+      Object version of the zip. Set this on a versioned bucket: without it,
+      overwriting the zip at the same key leaves CloudFormation seeing no change
+      and the old code keeps running.
+
+  LambdaHandler:
+    Type: String
+    Default: adobe_aem.handler.lambda_handler
+    Description: Entrypoint. Change this only if you have renamed the module.
+
+  # --- Runtime and sizing ---------------------------------------------------
+  LambdaRuntime:
+    Type: String
+    Default: python3.14
+    AllowedValues:
+      - python3.15
+      - python3.14
+      - python3.13
+      - python3.12
+      - nodejs26.x
+      - nodejs24.x
+      - nodejs22.x
+      - provided.al2023
+    Description: >-
+      Runtime identifier. The default is the longest-lived GA managed runtime.
+      python3.15 and nodejs26.x are public preview: no SLA, no technical
+      support, and AWS advises against production use, so selecting one also
+      requires AllowPreviewRuntime. Check the live deprecation table at
+      https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
+
+  AllowPreviewRuntime:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Must be true to deploy a public-preview runtime.
+
+  Architecture:
+    Type: String
+    Default: arm64
+    AllowedValues: [arm64, x86_64]
+    Description: arm64 is cheaper per GB-second.
+
+  MemorySize:
+    Type: Number
+    Default: 1024
+    MinValue: 128
+    MaxValue: 10240
+    Description: >-
+      Memory, which also sets the CPU share. Streaming work is rarely
+      memory-bound, so raise this to buy CPU for decompression rather than to
+      hold more data.
+
+  TimeoutSeconds:
+    Type: Number
+    Default: 600
+    MinValue: 1
+    MaxValue: 900
+    Description: >-
+      Invocation timeout. AEM forwards on a schedule, so one object is a whole
+      hour or day of one log type from one tier - a sampled author-tier day held
+      46k request-log lines in 5.6 MB, and a busy publish tier is an order of
+      magnitude more.
+
+  QueueVisibilityTimeoutSeconds:
+    Type: Number
+    Default: 1800
+    MinValue: 1
+    MaxValue: 43200
+    Description: >-
+      Queue visibility timeout. MUST be at least TimeoutSeconds, and AWS
+      recommends six times it; the default is 6 x the default TimeoutSeconds. A
+      shorter value lets SQS redeliver a message while the first invocation is
+      still processing it, duplicating every line it has already shipped.
+      CloudFormation cannot compute this from TimeoutSeconds, so raise both
+      together.
+
+  ReservedConcurrency:
+    Type: Number
+    Default: -1
+    Description: >-
+      Concurrency cap, or -1 for unreserved. Set a real number before pointing
+      this at a bucket with a large existing backlog: an unbounded fan-out will
+      hit Loki's per-tenant rate limit and burn the retry budget on 429s.
+
+  # --- Parsing --------------------------------------------------------------
+  LineContent:
+    Type: String
+    Default: raw
+    AllowedValues: [raw, message]
+    Description: >-
+      raw ships the original log line, which is lossless and makes a |= filter
+      behave as expected. message ships only the human-readable part, dropping
+      the timestamp and node id that are already in structured metadata - about
+      40% less ingest volume on an error log.
+
+  SniffContent:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Identify the log type from the file's first line when KeyPattern did not.
+      Costs nothing, since that line is read either way, and is what stops a
+      mismatched KeyPattern sending every line to the unknown stream.
+
+  CorrelateRequests:
+    Type: String
+    Default: "true"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Pair the AEM request log's -> and <- lines so the response line carries
+      the method and path it belongs to. Leave this on: Loki has no join, so
+      without it the duration is unattributable and latency-by-path is
+      impossible.
+
+  MaxPendingRequests:
+    Type: Number
+    Default: 20000
+    MinValue: 1
+    Description: >-
+      Cap on buffered request-log lines awaiting their partner. Bounds memory on
+      a very large object. Exceeding it costs enrichment on the oldest lines,
+      never the lines themselves.
+
+  DropClientIp:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Omit client_ip from structured metadata on the access and CDN logs. Kept
+      by default because it drives the geography and abuse panels; set true
+      where a data-protection position says client addresses must not be stored.
+
+  LogUtcOffsetSeconds:
+    Type: Number
+    Default: 0
+    Description: >-
+      Offset for the two formats that carry no timezone - the AEM Java error log
+      and the Apache error log. AEM as a Cloud Service writes UTC, so 0 is
+      correct; a self-hosted AEM logging local time needs this set or every error
+      line lands in the wrong place on the timeline.
+
+  MaxTimestampAgeSeconds:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    Description: >-
+      Stamp a line at ingestion time instead of its own event time once it is
+      older than this. 0 always uses the event time. Set it before replaying a
+      historical export: Loki rejects a sample older than the tenant's
+      reject_old_samples_max_age with a 400 that no retry fixes, and one stale
+      line fails the whole batch it travelled in.
+
+  BatchMaxLines:
+    Type: Number
+    Default: 5000
+    MinValue: 1
+    Description: Log lines per Loki push.
+
+  BatchMaxBytes:
+    Type: Number
+    Default: 4194304
+    MinValue: 1024
+    Description: Approximate bytes per Loki push.
+
+  # --- Observability --------------------------------------------------------
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+    Description: The function's own logging, not the data being shipped. DEBUG costs CloudWatch ingest.
+
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 3653]
+    Description: >-
+      Retention for the function's log group. There is deliberately no
+      never-expire option: that is a slow-growing bill nobody notices.
+
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: SNS topic notified when an alarm fires. An alarm with no action is decoration.
+
+Conditions:
+  UsingEventBridge: !Equals [!Ref EventWiring, EventBridge]
+  WiringIsManual: !Equals [!Ref EventWiring, Manual]
+  HasCustomerManagedKey: !Not [!Equals [!Ref CredentialsKmsKeyArn, ""]]
+  # A full ARN is used as-is; a bare name needs the wildcard suffix Secrets
+  # Manager appends to every secret ARN.
+  IsSecretArn: !Equals
+    - !Select [0, !Split [":", !Ref CredentialsSecretId]]
+    - "arn"
+  HasCodeVersion: !Not [!Equals [!Ref LambdaCodeS3ObjectVersion, ""]]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+  HasPrefixFilter: !Not [!Equals [!Ref SourcePrefix, ""]]
+  HasReservedConcurrency: !Not [!Equals [!Ref ReservedConcurrency, -1]]
+  # A preview runtime selected without the opt-in makes this true, and the guard
+  # resource below then fails the stack with a message that says why.
+  PreviewRuntimeNotPermitted: !And
+    - !Or
+      - !Equals [!Ref LambdaRuntime, python3.15]
+      - !Equals [!Ref LambdaRuntime, nodejs26.x]
+    - !Equals [!Ref AllowPreviewRuntime, "false"]
+
+Resources:
+  # CloudFormation has no assertion primitive, so the guard is a resource that
+  # only exists in the bad case and cannot be created. A WaitConditionHandle
+  # creates no infrastructure and costs nothing; paired with a WaitCondition
+  # whose timeout is zero, it fails fast with the reason in the stack events.
+  PreviewRuntimeGuardHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+    Condition: PreviewRuntimeNotPermitted
+
+  PreviewRuntimeGuard:
+    Type: AWS::CloudFormation::WaitCondition
+    Condition: PreviewRuntimeNotPermitted
+    Metadata:
+      Reason: >-
+        The selected LambdaRuntime is in public preview: no Lambda SLA, no
+        technical support, and AWS advises against production use. Set
+        AllowPreviewRuntime to true to proceed deliberately, or pick a GA runtime.
+    Properties:
+      Handle: !Ref PreviewRuntimeGuardHandle
+      Timeout: "1"
+      Count: 1
+
+  # --- Queues ---------------------------------------------------------------
+  DeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub "${AWS::StackName}-dlq"
+      # 14 days, the maximum, so there is time to diagnose and redrive.
+      MessageRetentionPeriod: 1209600
+      SqsManagedSseEnabled: true
+
+  NotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref AWS::StackName
+      # Must be >= TimeoutSeconds. See the parameter description.
+      VisibilityTimeout: !Ref QueueVisibilityTimeoutSeconds
+      MessageRetentionPeriod: 345600
+      SqsManagedSseEnabled: true
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
+        maxReceiveCount: 3
+
+  # Scoped to this account. Without the SourceAccount condition any S3 bucket or
+  # EventBridge rule in any account could post here - the confused-deputy
+  # problem the service principal alone does not prevent.
+  NotificationQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues: [!Ref NotificationQueue]
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowS3Notifications
+            Effect: Allow
+            Principal: { Service: s3.amazonaws.com }
+            Action: sqs:SendMessage
+            Resource: !GetAtt NotificationQueue.Arn
+            Condition:
+              StringEquals: { "aws:SourceAccount": !Ref AWS::AccountId }
+              ArnEquals:
+                "aws:SourceArn": !Sub "arn:${AWS::Partition}:s3:::${SourceBucketName}"
+          # Present only in EventBridge mode, and scoped to this stack's own
+          # rule. SourceAccount alone would let any EventBridge rule in the
+          # account post here, which is the confused-deputy problem the service
+          # principal does not prevent. ObjectCreatedRule does not exist in
+          # manual mode, so !GetAtt on it would fail the stack.
+          - !If
+            - UsingEventBridge
+            - Sid: AllowEventBridgeNotifications
+              Effect: Allow
+              Principal: { Service: events.amazonaws.com }
+              Action: sqs:SendMessage
+              Resource: !GetAtt NotificationQueue.Arn
+              Condition:
+                StringEquals: { "aws:SourceAccount": !Ref AWS::AccountId }
+                ArnEquals:
+                  "aws:SourceArn": !GetAtt ObjectCreatedRule.Arn
+            - !Ref AWS::NoValue
+
+  ObjectCreatedRule:
+    Type: AWS::Events::Rule
+    Condition: UsingEventBridge
+    Properties:
+      Description: !Sub "Route ${SourceBucketName} object-created events to ${AWS::StackName}"
+      EventPattern:
+        source: ["aws.s3"]
+        detail-type: ["Object Created"]
+        detail:
+          bucket:
+            name: [!Ref SourceBucketName]
+          # Prefix only, deliberately. EventBridge ORs multiple matchers on one
+          # field, so [{prefix: x}, {suffix: .gz}] would WIDEN the filter to
+          # "prefix x OR suffix .gz" rather than narrowing it to both. The
+          # suffix is enforced downstream instead: the S3 notification path
+          # (EventWiring=Manual) supports both as real filter rules, and the
+          # function skips a non-matching key. An empty matcher value matches
+          # nothing, so the whole block is omitted when no prefix is set.
+          object: !If
+            - HasPrefixFilter
+            - key: [{prefix: !Ref SourcePrefix}]
+            - !Ref AWS::NoValue
+      State: ENABLED
+      Targets:
+        - Id: NotificationQueue
+          Arn: !GetAtt NotificationQueue.Arn
+
+  # --- Execution role -------------------------------------------------------
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    # Created explicitly, and deliberately retained on stack delete. A log group
+    # that Lambda creates implicitly has no retention and no tags, and is
+    # invisible to the stack.
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        # Written out rather than attaching AWSLambdaBasicExecutionRole, which
+        # grants logs:CreateLogGroup across the whole account.
+        - PolicyName: write-own-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "${FunctionLogGroup.Arn}:*"
+
+        - PolicyName: read-source-objects
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Read-only, prefix-scoped. This function never writes to or
+              # deletes from the source bucket.
+              - Effect: Allow
+                Action: [s3:GetObject, s3:GetObjectVersion]
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${SourceBucketName}/${SourcePrefix}*"
+              - Effect: Allow
+                Action: s3:ListBucket
+                Resource: !Sub "arn:${AWS::Partition}:s3:::${SourceBucketName}"
+                Condition:
+                  StringLike: { "s3:prefix": !Sub "${SourcePrefix}*" }
+
+        - PolicyName: consume-notification-queue
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [sqs:ReceiveMessage, sqs:DeleteMessage, sqs:GetQueueAttributes]
+                Resource: !GetAtt NotificationQueue.Arn
+
+        - PolicyName: read-grafana-cloud-credential
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [secretsmanager:GetSecretValue, secretsmanager:DescribeSecret]
+                Resource: !If
+                  - IsSecretArn
+                  - !Ref CredentialsSecretId
+                  # Secrets Manager appends a random 6-character suffix to every
+                  # secret's ARN, so a name has to be matched with a wildcard.
+                  - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CredentialsSecretId}-??????"
+
+  CredentialKmsPolicy:
+    Type: AWS::IAM::RolePolicy
+    Condition: HasCustomerManagedKey
+    Properties:
+      RoleName: !Ref FunctionRole
+      PolicyName: decrypt-credential
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: kms:Decrypt
+            Resource: !Ref CredentialsKmsKeyArn
+            Condition:
+              StringEquals:
+                "kms:ViaService": !Sub "secretsmanager.${AWS::Region}.amazonaws.com"
+
+  # --- Function -------------------------------------------------------------
+  Function:
+    Type: AWS::Lambda::Function
+    DependsOn: [FunctionLogGroup]
+    Properties:
+      FunctionName: !Ref AWS::StackName
+      Description: !Sub "Ships Adobe AEM Cloud Service logs from s3://${SourceBucketName} to Grafana Cloud Loki"
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: !Ref LambdaRuntime
+      Handler: !Ref LambdaHandler
+      Architectures: [!Ref Architecture]
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref TimeoutSeconds
+      ReservedConcurrentExecutions: !If
+        - HasReservedConcurrency
+        - !Ref ReservedConcurrency
+        - !Ref AWS::NoValue
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+        S3ObjectVersion: !If [HasCodeVersion, !Ref LambdaCodeS3ObjectVersion, !Ref AWS::NoValue]
+      Environment:
+        # No credential here. Environment variables are readable by anyone with
+        # lambda:GetFunctionConfiguration; the function fetches the token from
+        # Secrets Manager at cold start instead.
+        Variables:
+          GRAFANA_CLOUD_LOKI_ENDPOINT: !Ref GrafanaCloudLokiEndpoint
+          GRAFANA_CLOUD_LOKI_TENANT_ID: !Ref GrafanaCloudLokiTenantId
+          GRAFANA_CLOUD_CREDENTIALS_SECRET_ID: !Ref CredentialsSecretId
+          SERVICE_NAME: !Ref ServiceName
+          # Enforced in the function because the EventBridge rule cannot AND a
+          # suffix onto a prefix. Empty means accept any key.
+          SOURCE_KEY_SUFFIX: !Ref SourceSuffix
+          KEY_PATTERN: !Ref KeyPattern
+          AEM_PROGRAM_ID: !Ref AemProgramId
+          AEM_ENV_ID: !Ref AemEnvId
+          AEM_ENV_TYPE: !Ref AemEnvType
+          AEM_TIER: !Ref AemTier
+          LINE_CONTENT: !Ref LineContent
+          SNIFF_CONTENT: !Ref SniffContent
+          CORRELATE_REQUESTS: !Ref CorrelateRequests
+          MAX_PENDING_REQUESTS: !Ref MaxPendingRequests
+          DROP_CLIENT_IP: !Ref DropClientIp
+          LOG_UTC_OFFSET_SECONDS: !Ref LogUtcOffsetSeconds
+          MAX_TIMESTAMP_AGE_SECONDS: !Ref MaxTimestampAgeSeconds
+          LOKI_STATIC_LABELS: !Ref StaticLabelsJson
+          LOKI_BATCH_MAX_LINES: !Ref BatchMaxLines
+          LOKI_BATCH_MAX_BYTES: !Ref BatchMaxBytes
+          LOG_LEVEL: !Ref LogLevel
+
+  EventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt NotificationQueue.Arn
+      FunctionName: !Ref Function
+      BatchSize: 10
+      MaximumBatchingWindowInSeconds: 30
+      # Without this, Lambda ignores the handler's batchItemFailures response and
+      # redelivers the whole batch when any one message fails, duplicating every
+      # line the successful messages already shipped.
+      FunctionResponseTypes: [ReportBatchItemFailures]
+
+  # --- Alarms ---------------------------------------------------------------
+  FunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-errors"
+      AlarmDescription: !Sub "${AWS::StackName} returned an error. Check /aws/lambda/${AWS::StackName}."
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # Lambda publishes no datapoint with no invocations, so the default would
+      # leave this in INSUFFICIENT_DATA forever on a quiet bucket.
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Function
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+      OKActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+
+  DeadLetterQueueAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-dlq-not-empty"
+      AlarmDescription: >-
+        Objects failed repeatedly and are parked in the dead-letter queue. Each
+        message holds the original notification, so a redrive reprocesses exactly
+        what failed.
+      Namespace: AWS/SQS
+      MetricName: ApproximateNumberOfMessagesVisible
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: QueueName
+          Value: !GetAtt DeadLetterQueue.QueueName
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+      OKActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+
+Outputs:
+  FunctionName:
+    Description: Name of the deployed function.
+    Value: !Ref Function
+
+  LogGroupName:
+    Description: Where the function's own logs go. Not where your data goes.
+    Value: !Ref FunctionLogGroup
+
+  NotificationQueueArn:
+    Description: Queue the function consumes from.
+    Value: !GetAtt NotificationQueue.Arn
+
+  DeadLetterQueueUrl:
+    Description: Redrive from here after fixing whatever failed.
+    Value: !Ref DeadLetterQueue
+
+  EventBridgePrerequisite:
+    Condition: UsingEventBridge
+    Description: >-
+      One-time bucket setting required for the EventBridge rule to receive
+      anything. The S3 API replaces the WHOLE notification configuration on
+      every write, so this reads the current one and merges EventBridge into it
+      rather than posting an EventBridge-only payload, which would delete any
+      existing queue, topic or Lambda subscription on the bucket. Needs jq.
+    Value: !Sub >-
+      aws s3api get-bucket-notification-configuration --bucket ${SourceBucketName}
+      | jq '. + {EventBridgeConfiguration: {}} | del(.ResponseMetadata)'
+      > /tmp/${SourceBucketName}-notify.json
+      && aws s3api put-bucket-notification-configuration --bucket ${SourceBucketName}
+      --notification-configuration file:///tmp/${SourceBucketName}-notify.json
+
+  ManualSubscriptionCommand:
+    Condition: WiringIsManual
+    Description: >-
+      Run this when EventWiring is Manual. The S3 API replaces the WHOLE
+      notification configuration on every write, so this merges the new queue
+      subscription into whatever the bucket already has rather than replacing
+      it. Needs jq. Review /tmp/<bucket>-notify.json before the put if the
+      bucket already carries subscriptions you care about.
+
+      An empty prefix or suffix is dropped rather than sent as an empty
+      FilterRule: S3 rejects a FilterRules entry with an empty Value, and it
+      rejects an empty FilterRules array, so the Filter key is omitted entirely
+      when neither is set.
+    Value: !Sub >-
+      aws s3api get-bucket-notification-configuration --bucket ${SourceBucketName}
+      | jq '. as $cur
+      | [{Name: "prefix", Value: "${SourcePrefix}"}, {Name: "suffix", Value: "${SourceSuffix}"}]
+      | map(select(.Value != "")) as $rules
+      | {QueueArn: "${NotificationQueue.Arn}", Events: ["s3:ObjectCreated:*"]}
+      + (if ($rules | length) > 0 then {Filter: {Key: {FilterRules: $rules}}} else {} end)
+      as $new
+      | $cur + {QueueConfigurations: (($cur.QueueConfigurations // []) + [$new])}
+      | del(.ResponseMetadata)'
+      > /tmp/${SourceBucketName}-notify.json
+      && aws s3api put-bucket-notification-configuration --bucket ${SourceBucketName}
+      --notification-configuration file:///tmp/${SourceBucketName}-notify.json
+
+  LokiQuery:
+    Description: A LogQL query that returns what this function ships.
+    Value: !Sub '{service_name="${ServiceName}"}'

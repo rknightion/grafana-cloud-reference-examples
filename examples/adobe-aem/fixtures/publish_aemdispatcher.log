@@ -1,0 +1,15 @@
+[24/Jul/2026:00:00:03 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "GET /content/examplecorp/en/home.html" 200 18ms [publish-farm] [HIT] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:03 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "GET /etc.clientlibs/examplecorp/clientlibs/clientlib-base.css" 200 2ms [publish-farm] [HIT] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:04 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] "GET /content/examplecorp/en/products.html" 200 143ms [publish-farm] [MISS] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:05 +0000] [D] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] "GET /content/examplecorp/en/search.html?q=widget" 200 211ms [publish-farm] [PASS] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:07 +0000] [W] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "GET /content/examplecorp/en/missing.html" 404 12ms [publish-farm] [MISS] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:09 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "POST /content/examplecorp/en/jcr:content/form.html" 302 87ms [publish-farm] [PASS] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:11 +0000] [E] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] "GET /content/examplecorp/en/broken.html" 500 4021ms [publish-farm] [MISS] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:12 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] "GET /content/dam/examplecorp/images/hero.jpg" 200 6ms [publish-farm] [HIT] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:14 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "HEAD /health" 200 1ms [publish-farm] [PASS] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:18 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "GET /content/examplecorp/en/home.html" 304 3ms [publish-farm] [HIT] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:21 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] "GET /content/examplecorp/en.html" 200 64ms [publish-farm] [UPDATE] "publish-p12345-e67890.adobeaemcloud.com"
+[24/Jul/2026:00:00:24 +0000] [D] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] cache invalidation received for /content/examplecorp/en
+[24/Jul/2026:00:00:26 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "GET /content/examplecorp/en/contact.html" 200 91ms [publish-farm] [MISS]
+[24/Jul/2026:00:00:29 +0000] [I] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] "GET /content/examplecorp/en/about.html" 200 22ms
+[24/Jul/2026:00:00:33 +0000] [W] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] "GET /bin/querybuilder.json" 403 8ms [publish-farm] [PASS] "publish-p12345-e67890.adobeaemcloud.com"

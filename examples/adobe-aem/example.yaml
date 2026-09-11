@@ -1,0 +1,60 @@
+# The manifest is the single source of truth for this example. `just lint` fails
+# if the Terraform variable default or the CloudFormation parameter default
+# disagrees with `runtime` here.
+name: adobe-aem
+title: Adobe Experience Manager Cloud Service logs to Grafana Cloud Loki
+summary: >-
+  Ships the seven log types AEM as a Cloud Service forwards to S3 - aemaccess,
+  aemerror, aemrequest, aemdispatcher, aemhttpdaccess, aemhttpderror and aemcdn -
+  into Grafana Cloud Loki. Parses each format, labels streams by deployment
+  coordinates only, and puts every extracted field into structured metadata so
+  dashboards aggregate without a parse stage. Ships two dashboards.
+status: alpha
+platform: aws
+deliverable: lambda-zip
+
+runtime:
+  identifier: python3.14
+  # Preview runtimes carry no SLA and no support, so they are never the default.
+  # Set this on a deployment to try one: `lambda_runtime = "python3.15"`.
+  preview_alternative: python3.15
+  architecture: arm64
+
+lambda:
+  handler: adobe_aem.handler.lambda_handler
+  package_root: src
+  # Higher than generic-s3's 512 MB. The parsing is regex-per-line rather than
+  # passthrough, and the request-log correlator holds a bounded dict of pending
+  # requests, so there is real work per line rather than just I/O.
+  memory_mb: 1024
+  # AEM forwards on a schedule, so an object is a whole hour or day of one log
+  # type from one tier. The sample author-tier day held 46k request-log lines in
+  # 5.6 MB; a busy publish tier is an order of magnitude more.
+  timeout_seconds: 600
+  # Use the boto3 the Lambda Python runtime provides instead of bundling it.
+  # Safe here because this function only calls GetObject and GetSecretValue,
+  # both stable for years.
+  rely_on_runtime_aws_sdk: true
+
+destinations:
+  - grafana-cloud-loki
+
+iac:
+  terraform: terraform
+  cloudformation: cloudformation/template.yaml
+
+release:
+  component: adobe-aem
+
+notes:
+  - >-
+    Four of the seven parsers (aemaccess, aemerror, aemrequest, aemcdn) are
+    tested against real sanitised AEM Cloud Service output. The remaining three
+    (aemdispatcher, aemhttpdaccess, aemhttpderror) are built from Adobe's
+    documented format strings and tested against hand-written fixtures, because
+    no real sample was available. They are the publish-tier and Apache-layer
+    logs; treat them as unverified against production output.
+  - >-
+    Adobe does not document a single S3 key layout for forwarded logs, so tier
+    and log type are extracted with a configurable KEY_PATTERN regex, with
+    content sniffing as a fallback. Set KEY_PATTERN to match your bucket.

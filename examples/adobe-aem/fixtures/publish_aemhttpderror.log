@@ -1,0 +1,10 @@
+[Fri Jul 24 00:00:01.093820 2026] [mpm_worker:notice] [pid 1:tid 140272153361288] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] AH00292: Apache/2.4.62 (Unix) configured -- resuming normal operations
+[Fri Jul 24 00:00:01.094011 2026] [core:notice] [pid 1:tid 140272153361288] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] AH00094: Command line: '/usr/sbin/httpd -D FOREGROUND'
+[Fri Jul 24 00:00:11.552104 2026] [proxy:error] [pid 42:tid 140272098711296] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] AH00898: Error reading from remote server returned by /content/examplecorp/en/broken.html
+[Fri Jul 24 00:00:11.552300 2026] [proxy_http:error] [pid 42:tid 140272098711296] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] AH01102: error reading status line from remote server localhost:4503
+[Fri Jul 24 00:00:33.118742 2026] [authz_core:error] [pid 57:tid 140272090318592] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] AH01630: client denied by server configuration: /bin/querybuilder.json
+[Fri Jul 24 00:01:02.771903 2026] [rewrite:warn] [pid 51:tid 140272081925888] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] AH00670: Options FollowSymLinks and SymLinksIfOwnerMatch are both off, so the RewriteRule directive is also forbidden
+[Fri Jul 24 00:04:19.003412 2026] [ssl:info] [pid 44:tid 140272073533184] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] AH01964: Connection to child 44 established (server publish-p12345-e67890.adobeaemcloud.com:443)
+[Fri Jul 24 00:09:55.884210 2026] [mpm_worker:error] [pid 1:tid 140272153361288] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] AH00287: server is within MinSpareThreads of MaxRequestWorkers, consider raising the MaxRequestWorkers setting
+[Fri Jul 24 00:12:41.220117 2026] [core:error] [pid 63:tid 140272065140480] [cm-p12345-e67890-aem-publish-fr8h4lctr-6liqc] AH00126: Invalid URI in request GET /content/../../etc/passwd HTTP/1.1
+[Fri Jul 24 01:00:00.000481 2026] [mpm_worker:notice] [pid 1:tid 140272153361288] [cm-p12345-e67890-aem-publish-fr8h4lctr-qs632] AH00295: caught SIGTERM, shutting down

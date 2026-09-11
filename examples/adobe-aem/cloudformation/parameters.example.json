@@ -1,0 +1,23 @@
+[
+  { "ParameterKey": "SourceBucketName", "ParameterValue": "acme-aem-logs" },
+  { "ParameterKey": "SourcePrefix", "ParameterValue": "aem/" },
+
+  { "ParameterKey": "AemProgramId", "ParameterValue": "p12345" },
+  { "ParameterKey": "AemEnvId", "ParameterValue": "e67890" },
+  { "ParameterKey": "AemEnvType", "ParameterValue": "prod" },
+
+  {
+    "ParameterKey": "GrafanaCloudLokiEndpoint",
+    "ParameterValue": "https://logs-prod-012.grafana.net"
+  },
+  { "ParameterKey": "GrafanaCloudLokiTenantId", "ParameterValue": "123456" },
+  { "ParameterKey": "CredentialsSecretId", "ParameterValue": "grafana-cloud/loki" },
+
+  { "ParameterKey": "ServiceName", "ParameterValue": "acme-aem" },
+
+  { "ParameterKey": "LambdaCodeS3Bucket", "ParameterValue": "my-deployment-artifacts" },
+  { "ParameterKey": "LambdaCodeS3Key", "ParameterValue": "adobe-aem/lambda.zip" },
+
+  { "ParameterKey": "LogLevel", "ParameterValue": "INFO" },
+  { "ParameterKey": "LogRetentionInDays", "ParameterValue": "30" }
+]
