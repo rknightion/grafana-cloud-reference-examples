@@ -1,0 +1,41 @@
+# The manifest is the single source of truth for this example. `just lint` fails
+# if the Terraform variable default or the CloudFormation parameter default
+# disagrees with `runtime` here.
+name: generic-s3
+title: Generic S3 to Grafana Cloud Loki
+summary: >-
+  Ships arbitrary files landing in an S3 bucket to Grafana Cloud Loki. Handles
+  plain text, JSON Lines, JSON arrays and CSV, each optionally gzipped, via a
+  direct bucket notification or an SQS queue.
+status: alpha
+platform: aws
+deliverable: lambda-zip
+
+runtime:
+  identifier: python3.14
+  # Preview runtimes carry no SLA and no support, so they are never the default.
+  # Set this on a deployment to try one: `lambda_runtime = "python3.15"`.
+  preview_alternative: python3.15
+  architecture: arm64
+
+lambda:
+  handler: generic_s3.handler.lambda_handler
+  package_root: src
+  memory_mb: 512
+  timeout_seconds: 300
+  # Use the boto3 the Lambda Python runtime provides instead of bundling it.
+  # Takes the deployment package from ~16 MB to ~50 KB. Safe here because this
+  # function only calls GetObject and GetSecretValue, both stable for years. An
+  # example that leans on recent SDK behaviour should leave this false and
+  # accept the larger zip.
+  rely_on_runtime_aws_sdk: true
+
+destinations:
+  - grafana-cloud-loki
+
+iac:
+  terraform: terraform
+  cloudformation: cloudformation/template.yaml
+
+release:
+  component: generic-s3

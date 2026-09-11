@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/rknightion/grafana-cloud-reference-examples/common/schemas/example.schema.json",
+  "title": "Example manifest",
+  "description": "The single source of truth for one example. tools/check_conformance.py validates every examples/*/example.yaml against this, and cross-checks runtime.identifier against the Terraform variable default and the CloudFormation parameter default so the three cannot drift.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "title", "summary", "status", "platform", "deliverable"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Must equal the directory name. Used for the release tag and the CI matrix.",
+      "pattern": "^[a-z][a-z0-9-]{1,48}[a-z0-9]$"
+    },
+    "title": {
+      "type": "string",
+      "description": "One-line human title for the README table.",
+      "minLength": 4,
+      "maxLength": 120
+    },
+    "summary": {
+      "type": "string",
+      "description": "Two or three sentences: what it does and what it talks to.",
+      "minLength": 20
+    },
+    "status": {
+      "type": "string",
+      "description": "planned exempts the example from the required-file-set check. Nothing else is exempt.",
+      "enum": ["planned", "alpha", "beta", "stable", "deprecated"]
+    },
+    "platform": {
+      "type": "string",
+      "description": "Where it runs. A field rather than a directory level, so the CI matrix and release tags stay derivable from ls examples/.",
+      "enum": ["aws", "gcp", "azure", "kubernetes", "none"]
+    },
+    "deliverable": {
+      "type": "string",
+      "description": "What the release artefact is.",
+      "enum": ["lambda-zip", "container-image", "script", "terraform-module", "helm-chart"]
+    },
+    "runtime": {
+      "type": "object",
+      "description": "Required for lambda-zip and container-image. identifier is authoritative: the Terraform variable default and the CloudFormation parameter default must match it.",
+      "additionalProperties": false,
+      "required": ["identifier"],
+      "properties": {
+        "identifier": {
+          "type": "string",
+          "description": "Lambda runtime identifier, or the language version for a non-Lambda deliverable."
+        },
+        "preview_alternative": {
+          "type": "string",
+          "description": "A public-preview runtime a deployer may opt into. Never the default: preview runtimes carry no SLA and no support."
+        },
+        "architecture": {
+          "type": "string",
+          "enum": ["arm64", "x86_64"]
+        }
+      }
+    },
+    "lambda": {
+      "type": "object",
+      "description": "Required when deliverable is lambda-zip. Drives the packager.",
+      "additionalProperties": false,
+      "required": ["handler", "package_root"],
+      "properties": {
+        "handler": {
+          "type": "string",
+          "minLength": 3
+        },
+        "package_root": {
+          "type": "string",
+          "description": "Directory under the example holding the importable package, relative to the example root.",
+          "default": "src"
+        },
+        "memory_mb": {
+          "type": "integer",
+          "minimum": 128,
+          "maximum": 10240
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 900
+        },
+        "rely_on_runtime_aws_sdk": {
+          "type": "boolean",
+          "default": false,
+          "description": "Exclude boto3/botocore and their dependencies from the deployment package and use the copy the Lambda Python runtime provides. Trades a ~16 MB zip for a ~50 KB one; the cost is that the runtime's SDK version changes under you during an automatic runtime update. Only set this true when the example uses long-stable APIs."
+        }
+      }
+    },
+    "container": {
+      "type": "object",
+      "description": "Required when deliverable is container-image.",
+      "additionalProperties": false,
+      "required": ["dockerfile", "image_name"],
+      "properties": {
+        "dockerfile": {
+          "type": "string"
+        },
+        "image_name": {
+          "type": "string"
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": ["linux/arm64", "linux/amd64"]
+        }
+      }
+    },
+    "destinations": {
+      "type": "array",
+      "description": "Grafana Cloud surfaces this example writes to.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "grafana-cloud-loki",
+          "grafana-cloud-mimir",
+          "grafana-cloud-tempo",
+          "grafana-cloud-pyroscope",
+          "grafana-cloud-otlp",
+          "grafana-cloud-api"
+        ]
+      }
+    },
+    "iac": {
+      "type": "object",
+      "description": "Paths to the IaC, relative to the example root. Both are required for a non-planned aws example.",
+      "additionalProperties": false,
+      "properties": {
+        "terraform": {
+          "type": "string"
+        },
+        "cloudformation": {
+          "type": "string"
+        }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["component"],
+      "properties": {
+        "component": {
+          "type": "string",
+          "description": "release-please component name. Must equal `name`, because it is also the required commit scope."
+        }
+      }
+    },
+    "notes": {
+      "type": "array",
+      "description": "Free-text caveats surfaced in the release notes.",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "deliverable": {
+            "const": "lambda-zip"
+          }
+        },
+        "required": ["deliverable"]
+      },
+      "then": {
+        "required": ["runtime", "lambda"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "deliverable": {
+            "const": "container-image"
+          }
+        },
+        "required": ["deliverable"]
+      },
+      "then": {
+        "required": ["runtime", "container"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "not": {
+              "const": "planned"
+            }
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "required": ["destinations", "release"]
+      }
+    }
+  ]
+}

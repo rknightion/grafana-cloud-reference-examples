@@ -1,0 +1,103 @@
+# uv workspace root. This package ships nothing; it exists so the shared library
+# and every Python example resolve as local path dependencies, which means an
+# example's `from grafana_cloud_common import ...` works in the editor, under
+# pytest and under mypy without a publish step. `just package` vendors the
+# resolved library into the release zip.
+[project]
+name = "grafana-cloud-reference-examples"
+version = "0.0.0"
+description = "Reference examples for integrating systems with Grafana Cloud"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "Apache-2.0"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+bypass-selection = true
+
+[tool.uv.workspace]
+# Every Python example is a member. `just new-example` appends to this list;
+# a glob is deliberately not used, because a Node or Go example has no
+# pyproject.toml and uv treats an unmatched member directory as an error.
+members = ["common/python", "examples/generic-s3"]
+
+[tool.uv.sources]
+grafana-cloud-common = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "ruff>=0.14.2",
+  "mypy>=1.18.2",
+  "pytest>=8.4.2",
+  "pytest-cov>=7.0.0",
+  "cfn-lint>=1.28.0",
+  "jsonschema>=4.25.1",
+  "pyyaml>=6.0.2",
+  "types-pyyaml>=6.0.12",
+  "types-jsonschema>=4.25.1",
+  "boto3>=1.40.0",
+  "boto3-stubs[s3,secretsmanager,sqs]>=1.40.0",
+]
+
+[tool.ruff]
+# Deliberately the OLDEST GA Python runtime in
+# common/cloudformation/conformance.yaml, not the newest and not the local
+# interpreter. The shared library is vendored verbatim into whichever runtime an
+# example selects, so its syntax floor is that oldest runtime.
+#
+# Concretely: at py314 the formatter rewrites `except (A, B):` into PEP 758
+# `except A, B:`, which is a SyntaxError on python3.12 and python3.13. A test in
+# common/python/tests enforces the floor rather than trusting this setting.
+target-version = "py312"
+line-length = 100
+extend-exclude = ["dist", "build", ".tools"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle
+  "F",    # pyflakes
+  "I",    # isort
+  "N",    # pep8-naming
+  "UP",   # pyupgrade
+  "B",    # bugbear
+  "A",    # builtins shadowing
+  "C4",   # comprehensions
+  "DTZ",  # naive datetimes - a Loki timestamp bug factory
+  "T20",  # no print(); use the structured logger
+  "SIM",  # simplify
+  "TID",  # tidy imports
+  "S",    # bandit: this repo is read as a security reference, so keep it on
+  "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tools are operator-facing build CLIs: stdout is their interface, and they
+# invoke uv, terraform and git from PATH on purpose (S603/S607) because pinning
+# an absolute path would break on every machine but the author's.
+"tools/*.py" = ["T20", "S603", "S607"]
+# Test doubles and fixtures carry obviously-fake credentials by design.
+"**/tests/**/*.py" = ["S101", "S105", "S106"]
+"**/testing.py" = ["S105", "S106"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_unreachable = true
+exclude = ["dist/", "build/", "\\.tools/"]
+
+[[tool.mypy.overrides]]
+module = ["tests.*", "*.tests.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["common/python/tests", "examples/generic-s3/tests", "tools/tests"]
+addopts = "-ra --strict-markers --strict-config"
+filterwarnings = ["error"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["grafana_cloud_common", "generic_s3", "adobe_aep"]

@@ -1,0 +1,25 @@
+# The shared Python library. Never published to PyPI and never a Lambda layer:
+# `just package` vendors the resolved source into each example's zip, which is
+# what keeps one downloaded zip deployable on its own.
+[project]
+name = "grafana-cloud-common"
+version = "0.1.0"
+description = "Shared building blocks for the Grafana Cloud reference examples"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "Apache-2.0"
+
+# Deliberately empty. The core modules are standard library only. boto3 is
+# provided by the Lambda runtime and declared by each example that uses the
+# grafana_cloud_common.aws subpackage, not here.
+dependencies = []
+
+[project.optional-dependencies]
+aws = ["boto3>=1.40.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/grafana_cloud_common"]

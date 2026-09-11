@@ -1,0 +1,40 @@
+{
+  "name": "@grafana-cloud/common",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared building blocks for the Node.js Grafana Cloud reference examples",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./aws": "./dist/aws/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "typecheck": "tsc --build --force",
+    "test": "vitest run"
+  },
+  "//": "No runtime dependencies. The core uses global fetch and node:zlib, so a minimal example's deployment package carries no third-party code. The AWS SDK v3 clients are peer dependencies because the Node.js Lambda runtime provides them.",
+  "peerDependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-secrets-manager": "^3.700.0"
+  },
+  "peerDependenciesMeta": {
+    "@aws-sdk/client-s3": {
+      "optional": true
+    },
+    "@aws-sdk/client-secrets-manager": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.700.0",
+    "@aws-sdk/client-secrets-manager": "^3.700.0"
+  }
+}

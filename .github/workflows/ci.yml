@@ -1,0 +1,166 @@
+# The gate. `ci-success` is the single required status check, so the job list
+# here can change without touching branch protection.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request: {}
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Only the newest commit's result matters, except on main where every commit
+  # is a potential release point.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  actionlint:
+    permissions:
+      contents: read
+    uses: rknightion/.github/.github/workflows/actionlint.yml@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+
+  zizmor:
+    permissions:
+      contents: read
+      security-events: write # upload SARIF
+      actions: read # matches the reusable's declared job permissions, else startup_failure
+    uses: rknightion/.github/.github/workflows/zizmor.yml@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+
+  codeql:
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    uses: rknightion/.github/.github/workflows/codeql.yml@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+    with:
+      languages: >-
+        [{"language":"python","build-mode":"none"},
+         {"language":"javascript-typescript","build-mode":"none"},
+         {"language":"actions","build-mode":"none"}]
+
+  # `just check` is the whole local gate, and this job is what makes it enforced
+  # rather than aspirational. Not using the shared just-check reusable: that
+  # replaces a whole job and cannot install a language toolchain, and this gate
+  # needs Python, Node and Terraform on the same runner.
+  gate:
+    name: just check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install just
+        uses: rknightion/.github/.github/actions/setup-just@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+          # Read from .python-version, so the CI interpreter matches the runtime
+          # the examples target.
+          python-version-file: .python-version
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          # Keep in step with the TERRAFORM_VERSION pin in the justfile. Both
+          # sides pinning is safe here because they pin the same value; a
+          # mismatch shows up as a fmt or validate failure, not silently.
+          terraform_version: 1.16.1
+          terraform_wrapper: false
+
+      - name: Install tflint
+        uses: terraform-linters/setup-tflint@1cf010d3c7aef302051ccdb68c14c5dc2efa34ef # v6.3.1
+        with:
+          tflint_version: v0.60.0
+
+      - name: Install dependencies
+        run: just setup
+        env:
+          # tflint fetches its plugins from the GitHub releases API, which
+          # rate-limits unauthenticated requests.
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - run: just check
+
+  # Build every example's release bundle on every run. A packaging failure that
+  # only shows up at release time is a packaging failure found at the worst
+  # possible moment.
+  package:
+    name: package examples
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install just
+        uses: rknightion/.github/.github/actions/setup-just@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+          python-version-file: .python-version
+
+      - run: just package-all
+
+      - name: Verify the build is reproducible
+        # Two builds of one commit must be byte-identical. Terraform detects new
+        # function code by source_code_hash, so a hash that changes on every
+        # build makes every apply redeploy unchanged code.
+        run: |
+          find dist -name '*.zip' -print0 | sort -z | xargs -0 sha256sum > /tmp/first.sha256
+          rm -rf dist
+          just package-all
+          find dist -name '*.zip' -print0 | sort -z | xargs -0 sha256sum > /tmp/second.sha256
+          diff /tmp/first.sha256 /tmp/second.sha256
+
+      - name: Upload the bundles for inspection
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: example-bundles
+          path: dist/*.zip
+          retention-days: 7
+
+  ci-success:
+    name: ci-success
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [actionlint, zizmor, codeql, gate, package]
+    steps:
+      - name: Fail if any required job did not pass
+        if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          echo "A required job failed or was cancelled: ${{ join(needs.*.result, ', ') }}"
+          exit 1
+      - name: All required jobs passed
+        run: echo "ci-success - ${{ join(needs.*.result, ', ') }}"
