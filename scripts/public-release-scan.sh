@@ -125,6 +125,27 @@ scan_regex() {
   fi
 }
 
+scan_regex_ignorecase() {
+  local label=$1 pattern=$2
+  local hits
+  hits=$(search_or_die rg --hidden --glob '!.git/**' --glob '!LICENSE' --glob "!${self}" \
+    -n -i -- "$pattern" .)
+  if [[ -n $hits ]]; then
+    printf '%s\n' "$hits"
+    echo "public-release scan: found $label in the working tree" >&2
+    failed=1
+  fi
+  if ((${#history_revisions[@]} > 0)); then
+    hits=$(search_or_die git grep -I -n -i -E -- "$pattern" "${history_revisions[@]}" \
+      -- . ':(exclude)LICENSE' ":(exclude)${self}")
+    if [[ -n $hits ]]; then
+      printf '%s\n' "$hits"
+      echo "public-release scan: found $label in reachable Git history" >&2
+      failed=1
+    fi
+  fi
+}
+
 # --- Credential material -----------------------------------------------------
 #
 # Token prefixes are matched with a LENGTH BOUND rather than as a bare prefix,
@@ -155,12 +176,71 @@ scan_fixed_case_sensitive "an encrypted private key" "-----BEGIN ENCRYPTED ""PRI
 # map out a private estate, and because a reference example that names one is
 # telling every reader to copy it.
 
-scan_fixed "a private Tailscale hostname" ".ts"".net"
-scan_fixed "a private OpenBao address" "open""bao."
-scan_fixed_case_sensitive "an absolute macOS home path" "/Users/"
-scan_fixed_case_sensitive "an absolute Linux home path" "/home/"
-scan_fixed "a private repository reference" "chat-""personal"
-scan_fixed "a private repository reference" "chat-""work"
+# Environment identity comes from an ERE passed IN BY ENVIRONMENT, never from
+# this file. The pattern set names specific customers, accounts, stacks and
+# tenant ids, so committing it to a public repository would disclose exactly
+# what it protects. Split string literals are not a substitute: they defeat
+# grep, not a reader.
+#
+# Accepted, in order of precedence:
+#   --patterns-file <path>                      a file holding the ERE
+#   GCRE_IDENTIFIER_PATTERN                     this repository's override
+#   CUSTOMER_IDENTIFIER_PATTERN                 the shared set, and what CI provides
+#   GCINSIGHT_CUSTOMER_IDENTIFIER_PATTERN       the existing local export
+#
+# Absent all four this exits 2 rather than passing, because a scan that silently
+# skips its identity half is worse than no scan. Extend the pattern set when a
+# new engagement starts: a missing identifier means the gate quietly passes.
+identity_pattern=""
+patterns_file=""
+allow_missing="${GCRE_SCAN_ALLOW_MISSING_PATTERNS:-0}"
+
+while (($# > 0)); do
+  case $1 in
+    --patterns-file)
+      patterns_file=${2:?--patterns-file needs a path}
+      shift 2
+      ;;
+    --allow-missing-patterns)
+      allow_missing=1
+      shift
+      ;;
+    *)
+      echo "public-release scan: unknown argument $1" >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ -n $patterns_file ]]; then
+  if [[ ! -r $patterns_file ]]; then
+    echo "public-release scan: --patterns-file $patterns_file is not readable" >&2
+    exit 2
+  fi
+  identity_pattern=$(tr -d '\n' <"$patterns_file")
+else
+  identity_pattern="${GCRE_IDENTIFIER_PATTERN:-${CUSTOMER_IDENTIFIER_PATTERN:-${GCINSIGHT_CUSTOMER_IDENTIFIER_PATTERN:-}}}"
+fi
+
+if [[ -z $identity_pattern ]]; then
+  if [[ $allow_missing == 1 ]]; then
+    echo "public-release scan: WARNING - no identity pattern set, so the identity half" >&2
+    echo "of this scan did not run. Only the credential and structural checks did." >&2
+    echo "This is only acceptable where secrets are genuinely unavailable, such as a" >&2
+    echo "pull request from a fork. It is never acceptable before a visibility change." >&2
+  else
+    echo "public-release scan: no identity pattern available." >&2
+    echo >&2
+    echo "Set one of GCRE_IDENTIFIER_PATTERN, CUSTOMER_IDENTIFIER_PATTERN or" >&2
+    echo "GCINSIGHT_CUSTOMER_IDENTIFIER_PATTERN, or pass --patterns-file <path>." >&2
+    echo >&2
+    echo "Exiting 2 rather than passing: a scan that skips its identity half while" >&2
+    echo "reporting success is worse than no scan at all." >&2
+    exit 2
+  fi
+else
+  scan_regex_ignorecase "source-environment identity" "$identity_pattern"
+fi
 
 scan_regex "a private IPv4 endpoint" \
   "https?://(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)"

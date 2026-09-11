@@ -110,6 +110,28 @@ account or tenant id. The examples use the documented placeholders throughout - 
 an AWS account, `123456` for a Loki tenant, `logs-prod-012.grafana.net` for an endpoint - and those
 are the only allowed forms.
 
+**The identity pattern set is never committed to this repository.** It names specific customers,
+accounts, stacks and tenant ids, so committing it would disclose exactly what it protects. It is an
+ERE passed in by environment, checked in this order:
+
+```
+--patterns-file <path>
+GCRE_IDENTIFIER_PATTERN                 this repository's override
+CUSTOMER_IDENTIFIER_PATTERN            the shared set; what CI provides as a repository secret
+GCINSIGHT_CUSTOMER_IDENTIFIER_PATTERN  the existing local export
+```
+
+With none of them set the scan **exits 2**, because a scan that silently skips its identity half
+while reporting success is worse than no scan. Extend the pattern set when a new engagement starts;
+a missing identifier means the gate quietly passes.
+
+Splitting a term across string literals is **not** a substitute for this. It defeats `grep`, not a
+reader, and a public repository is read. An earlier version of this script hardcoded three
+identifiers that way and had to be rewritten out of history.
+
+Only generic patterns are hardcoded: credential shapes, private IPv4 endpoints, absolute home paths,
+forbidden filenames and binary extensions. Publishing those discloses nothing.
+
 Two things make the scan trustworthy rather than decorative: it refuses to run without `ripgrep`
 instead of matching nothing, and a search that errors aborts the scan instead of reading as a pass.
 Do not "fix" either by making it lenient.

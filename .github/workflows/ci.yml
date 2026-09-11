@@ -119,6 +119,18 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - run: just check
+        env:
+          # The identity half of the publication scan takes its pattern set by
+          # environment, because that set names specific customers and stacks
+          # and must never be committed here. Without it the scan exits 2 rather
+          # than passing, so a missing secret fails the gate loudly.
+          #
+          # A pull request from a fork gets no secrets, so it cannot run this
+          # half. That is deliberate: such a PR needs a maintainer to re-run the
+          # scan locally before merge, and it is never a basis for a visibility
+          # change.
+          CUSTOMER_IDENTIFIER_PATTERN: ${{ secrets.CUSTOMER_IDENTIFIER_PATTERN }}
+          GCRE_SCAN_ALLOW_MISSING_PATTERNS: ${{ github.event.pull_request.head.repo.fork && '1' || '0' }}
 
   # Build every example's release bundle on every run. A packaging failure that
   # only shows up at release time is a packaging failure found at the worst
