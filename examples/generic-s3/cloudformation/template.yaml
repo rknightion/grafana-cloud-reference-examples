@@ -654,11 +654,19 @@ Outputs:
       subscription into whatever the bucket already has rather than replacing
       it. Needs jq. Review /tmp/<bucket>-notify.json before the put if the
       bucket already carries subscriptions you care about.
+
+      An empty prefix or suffix is dropped rather than sent as an empty
+      FilterRule: S3 rejects a FilterRules entry with an empty Value, and it
+      rejects an empty FilterRules array, so the Filter key is omitted entirely
+      when neither is set.
     Value: !Sub >-
       aws s3api get-bucket-notification-configuration --bucket ${SourceBucketName}
-      | jq '. as $cur | {QueueArn: "${NotificationQueue.Arn}", Events: ["s3:ObjectCreated:*"],
-      Filter: {Key: {FilterRules: [{Name: "prefix", Value: "${SourcePrefix}"},
-      {Name: "suffix", Value: "${SourceSuffix}"}]}}} as $new
+      | jq '. as $cur
+      | [{Name: "prefix", Value: "${SourcePrefix}"}, {Name: "suffix", Value: "${SourceSuffix}"}]
+      | map(select(.Value != "")) as $rules
+      | {QueueArn: "${NotificationQueue.Arn}", Events: ["s3:ObjectCreated:*"]}
+      + (if ($rules | length) > 0 then {Filter: {Key: {FilterRules: $rules}}} else {} end)
+      as $new
       | $cur + {QueueConfigurations: (($cur.QueueConfigurations // []) + [$new])}
       | del(.ResponseMetadata)'
       > /tmp/${SourceBucketName}-notify.json

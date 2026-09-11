@@ -2,7 +2,7 @@
 
 Deliberately format-agnostic: plain text, JSON Lines, a JSON array or CSV, each
 optionally gzipped. Everything specific to one vendor's export format belongs in
-its own example (see ``examples/adobe-aep``), not here.
+its own example (see ``examples/adobe-aem``), not here.
 
 Everything expensive is built at module scope, so it happens once per execution
 environment rather than once per invocation, and a bad configuration fails the
