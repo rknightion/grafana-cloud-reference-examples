@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   pull_request: {}
+  # Lets the gate be re-run without a commit. Worth having because the CodeQL
+  # and zizmor jobs below are gated on `github.event.repository.private`, which
+  # comes from the triggering event's payload - so re-running an old run replays
+  # the old visibility and those jobs stay skipped. A dispatch re-evaluates it.
+  workflow_dispatch: {}
 
 permissions: {}
 
