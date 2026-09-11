@@ -1,0 +1,46 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored; only this
+# .example file is tracked.
+
+source_bucket_name = "acme-logs"
+source_prefix      = "app-logs/"
+source_suffix      = ".gz"
+
+# Host, base URL or full push URL - all three are accepted.
+grafana_cloud_loki_endpoint  = "https://logs-prod-012.grafana.net"
+grafana_cloud_loki_tenant_id = "123456"
+
+# The secret must already exist. The token is never a Terraform input, so it
+# never lands in state. Create it from a file rather than inline, so the token
+# does not land in your shell history or in the process list:
+#
+#   umask 077 && cat > /tmp/gc-loki.json <<'JSON'
+#   {"tenant_id":"123456","token":"glc_..."}
+#   JSON
+#   aws secretsmanager create-secret --name grafana-cloud/loki \
+#     --secret-string file:///tmp/gc-loki.json
+#   rm -f /tmp/gc-loki.json
+credentials_secret_id = "grafana-cloud/loki"
+
+service_name = "acme-app-logs"
+
+# Low cardinality only. Anything that varies per object or per record belongs in
+# the log line, not here.
+static_labels = {
+  env    = "prod"
+  region = "eu-west-1"
+}
+
+# The function's own operational logs, not the data being shipped.
+log_level          = "INFO"
+log_retention_days = 30
+
+# Uncomment before a first run against a bucket with a large existing backlog,
+# or the fan-out will hit Loki's per-tenant rate limit.
+# reserved_concurrency = 10
+
+# Uncomment to notify somewhere when the function errors or the DLQ fills.
+# alarm_actions = ["arn:aws:sns:eu-west-1:123456789012:platform-alerts"]
+
+tags = {
+  Owner = "platform-team"
+}

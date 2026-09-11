@@ -216,3 +216,51 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- grafana-cloud-reference-examples ---
+
+# Planning artefacts are scratch, never deliverables.
+docs/superpowers/
+
+# Build output: packaged example zips and staged trees.
+/dist/
+/build/
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfplan.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# Real variable files hold account ids and tokens; only the .example is tracked.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# CloudFormation: real parameter files hold account-specific values.
+**/cloudformation/parameters.json
+!**/cloudformation/parameters.example.json
+packaged-template.yaml
+
+# Node
+node_modules/
+*.tsbuildinfo
+.npm/
+
+# Local tool installs (`just setup`)
+/.tools/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

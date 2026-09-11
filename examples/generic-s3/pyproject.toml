@@ -1,0 +1,26 @@
+[project]
+name = "grafana-cloud-example-generic-s3"
+version = "0.1.0"
+description = "Ship files landing in an S3 bucket to Grafana Cloud Loki"
+readme = "README.md"
+requires-python = ">=3.14"
+license = "Apache-2.0"
+
+# grafana-cloud-common is a workspace path dependency and is vendored into the
+# zip by `just package generic-s3`, not installed from an index.
+#
+# boto3 IS bundled rather than relying on the version the Lambda runtime ships.
+# AWS recommends this: the runtime's bundled SDK changes under you during an
+# automatic runtime update, and a function that depends on its behaviour can
+# break with no deploy to blame.
+dependencies = [
+  "grafana-cloud-common",
+  "boto3>=1.40.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/generic_s3"]

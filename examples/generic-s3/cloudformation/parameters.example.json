@@ -1,0 +1,24 @@
+[
+  { "ParameterKey": "SourceBucketName", "ParameterValue": "acme-logs" },
+  { "ParameterKey": "SourcePrefix", "ParameterValue": "app-logs/" },
+  { "ParameterKey": "SourceSuffix", "ParameterValue": ".gz" },
+
+  {
+    "ParameterKey": "GrafanaCloudLokiEndpoint",
+    "ParameterValue": "https://logs-prod-012.grafana.net"
+  },
+  { "ParameterKey": "GrafanaCloudLokiTenantId", "ParameterValue": "123456" },
+  { "ParameterKey": "CredentialsSecretId", "ParameterValue": "grafana-cloud/loki" },
+
+  { "ParameterKey": "ServiceName", "ParameterValue": "acme-app-logs" },
+  {
+    "ParameterKey": "StaticLabelsJson",
+    "ParameterValue": "{\"env\":\"prod\",\"region\":\"eu-west-1\"}"
+  },
+
+  { "ParameterKey": "LambdaCodeS3Bucket", "ParameterValue": "my-deployment-artifacts" },
+  { "ParameterKey": "LambdaCodeS3Key", "ParameterValue": "generic-s3/lambda.zip" },
+
+  { "ParameterKey": "LogLevel", "ParameterValue": "INFO" },
+  { "ParameterKey": "LogRetentionInDays", "ParameterValue": "30" }
+]

@@ -1,0 +1,132 @@
+# Release automation. On every push to main, release-please maintains one release
+# PR per component; merging it tags `<component>-vX.Y.Z`, creates the GitHub
+# Release, and the build job below attaches that component's bundle to it.
+#
+# The mint step needs a permission set, policy and JWT role provisioned in the
+# secret broker for this repository, plus the TS_WIF_* repository secrets. Those
+# are provisioned out of band, per the operator runbook; if the mint step fails,
+# that provisioning is what is missing. Nothing else in CI depends on it.
+#
+# A long-lived cross-repo PAT is deliberately not used here.
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# One shared group for the whole repo, and never cancelled. Two release runs in
+# flight would derive the same next version and then fight over the tag, and
+# cancelling one mid-publish can leave a release with a half-uploaded asset.
+concurrency:
+  group: release-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release commit, tag and GitHub Release
+      pull-requests: write # open and update the release PRs
+      id-token: write # exchanged for a tailnet identity and an OpenBao token
+    outputs:
+      paths_released: ${{ steps.release.outputs.paths_released }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
+    steps:
+      # Mints a short-lived GitHub App installation token scoped to THIS repo.
+      # The release PR's author becomes the App rather than github-actions[bot],
+      # which is what lets CI run on it unattended instead of parking at
+      # "action_required".
+      - name: Mint a scoped release token
+        id: bao
+        uses: rknightion/.github/.github/actions/broker-token@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+        with:
+          permission-set: release-please-grafana-cloud-reference-examples
+          tailscale-client-id: ${{ secrets.TS_WIF_CLIENT_ID }}
+          tailscale-audience: ${{ secrets.TS_WIF_AUDIENCE }}
+
+      - id: release
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
+        with:
+          token: ${{ steps.bao.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  # One job per released path, so an example's bundle lands on its own release.
+  attach-bundles:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # upload release assets
+    strategy:
+      # Never cancel siblings: a failure on one component must not leave another
+      # component's release without its asset.
+      fail-fast: false
+      matrix:
+        path: ${{ fromJSON(needs.release-please.outputs.paths_released) }}
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Skip anything that is not an example
+        id: scope
+        env:
+          RELEASED_PATH: ${{ matrix.path }}
+        run: |
+          case "${RELEASED_PATH}" in
+            examples/*) echo "example=${RELEASED_PATH#examples/}" >> "$GITHUB_OUTPUT" ;;
+            # A shared library release has no artefact of its own; consuming
+            # examples pick the change up in their own next bundle.
+            *) echo "example=" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Install just
+        if: steps.scope.outputs.example != ''
+        uses: rknightion/.github/.github/actions/setup-just@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+
+      - name: Install uv
+        if: steps.scope.outputs.example != ''
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          enable-cache: true
+          python-version-file: .python-version
+
+      - name: Build the bundle
+        if: steps.scope.outputs.example != ''
+        env:
+          EXAMPLE: ${{ steps.scope.outputs.example }}
+        run: just package "${EXAMPLE}"
+
+      - name: Attach it to the release
+        if: steps.scope.outputs.example != ''
+        env:
+          # The release-please action already created this tag.
+          GH_TOKEN: ${{ github.token }}
+          EXAMPLE: ${{ steps.scope.outputs.example }}
+        run: |
+          set -euo pipefail
+          # Derive the tag from the built artefact rather than from an input, so
+          # the asset and the release can never disagree about the version.
+          bundle="$(find dist -name "${EXAMPLE}-*.zip" ! -name '*-lambda.zip' -print -quit)"
+          [ -n "${bundle}" ] || { echo "no bundle built for ${EXAMPLE}" >&2; exit 1; }
+          version="$(basename "${bundle}" .zip)"
+          version="${version#"${EXAMPLE}"-}"
+          tag="${EXAMPLE}-v${version}"
+          echo "attaching ${bundle} to ${tag}"
+          gh release upload "${tag}" \
+            "${bundle}" \
+            "dist/${EXAMPLE}-${version}-lambda.zip" \
+            --clobber

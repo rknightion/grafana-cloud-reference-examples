@@ -1,0 +1,9 @@
+# Everything, by default.
+*                                   @rknightion
+
+# The shared seams: a change here reaches every example at its next release.
+/common/                            @rknightion
+/tools/                             @rknightion
+/.github/workflows/                 @rknightion
+/release-please-config.json         @rknightion
+/common/cloudformation/conformance.yaml @rknightion

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", ":semanticCommits", "helpers:pinGitHubActionDigests"],
+  "timezone": "Europe/London",
+  "schedule": ["before 6am on monday"],
+  "prConcurrentLimit": 5,
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "deps:",
+  "lockFileMaintenance": { "enabled": true },
+  "customManagers": [
+    {
+      "description": "Tool versions pinned in the justfile, annotated with # renovate: comments.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^justfile$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>.+?)\\s+[A-Z_]+ := \"(?<currentValue>.+?)\""
+      ]
+    },
+    {
+      "description": "The tflint AWS ruleset version, which has no manifest of its own.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^\\.tflint\\.hcl$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>.+?)\\s+version\\s*=\\s*\"(?<currentValue>.+?)\""
+      ],
+      "extractVersionTemplate": "^v?(?<version>.*)$"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group the shared reusable workflows, which release together.",
+      "matchPackageNames": ["rknightion/.github"],
+      "groupName": "shared workflows"
+    },
+    {
+      "description": "The Terraform version is pinned on both sides - the justfile and the CI setup step - so they must move together or one pin becomes a lie.",
+      "matchManagers": ["custom.regex", "github-actions"],
+      "matchPackageNames": ["hashicorp/terraform", "hashicorp/setup-terraform"],
+      "groupName": "terraform"
+    },
+    {
+      "description": "Same for tflint.",
+      "matchPackageNames": [
+        "terraform-linters/tflint",
+        "terraform-linters/setup-tflint",
+        "terraform-linters/tflint-ruleset-aws"
+      ],
+      "groupName": "tflint"
+    },
+    {
+      "description": "The AWS provider range in the shared modules is deliberately wide; only bump it for a major.",
+      "matchManagers": ["terraform"],
+      "matchPackageNames": ["hashicorp/aws"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "enabled": false
+    },
+    {
+      "description": "Dev tooling churns; batch it rather than one PR per bump.",
+      "matchDepTypes": ["devDependencies", "dev"],
+      "groupName": "dev tooling"
+    }
+  ],
+  "vulnerabilityAlerts": { "labels": ["security"], "schedule": ["at any time"] }
+}

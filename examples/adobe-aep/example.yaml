@@ -1,0 +1,24 @@
+# status: planned exempts this example from the required-file-set check in
+# tools/check_conformance.py. Nothing else is exempt, so flip this to alpha only
+# once src/, tests/, terraform/ and cloudformation/ all exist.
+name: adobe-aep
+title: Adobe Experience Platform exports to Grafana Cloud Loki
+summary: >-
+  Ships Adobe Experience Platform dataset and profile exports out of their S3
+  destination bucket into Grafana Cloud Loki. Builds on generic-s3 and adds the
+  AEP-specific parts: the export manifest, the partitioned key layout, and the
+  XDM field mapping that decides what becomes a label.
+status: planned
+platform: aws
+deliverable: lambda-zip
+
+runtime:
+  identifier: python3.14
+  preview_alternative: python3.15
+  architecture: arm64
+
+lambda:
+  handler: adobe_aep.handler.lambda_handler
+  package_root: src
+  memory_mb: 1024
+  timeout_seconds: 600

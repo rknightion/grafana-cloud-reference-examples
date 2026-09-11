@@ -1,0 +1,134 @@
+# What every example's CloudFormation template must carry.
+#
+# CloudFormation reuse in this repo is by copy, not by nested stacks (see
+# templates/lambda-s3-loki.reference.yaml for why). This file is the other half
+# of that deal: the copies are allowed to diverge on what the example actually
+# does, and not allowed to diverge on any of the below. `just lint` enforces it
+# via tools/check_conformance.py.
+#
+# Add a rule here when you find a mistake worth never making twice, not for
+# style.
+
+# Runtime identifiers an example may offer. Kept in one place so a deprecation
+# is a single edit rather than a sweep, and so a template cannot quietly offer a
+# runtime that has already gone.
+#
+# Deprecation dates published by AWS, for planning only - check the live table:
+# https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
+runtimes:
+  ga:
+    python3.14: 2029-06-30
+    python3.13: 2029-06-30
+    python3.12: 2028-10-31
+    nodejs24.x: 2028-04-30
+    nodejs22.x: 2027-04-30
+    # OS-only runtime: deprecates on the Amazon Linux clock, not a language
+    # one, and a compiled binary has no language runtime to deprecate at all.
+    # The right choice for Go and Rust.
+    provided.al2023: 2029-06-30
+  preview:
+    # No Lambda SLA, no technical support, AWS advises against production use.
+    # A template may offer these only alongside an AllowPreviewRuntime gate.
+    python3.15: null
+    nodejs26.x: null
+
+# Parameters every template must declare, so a customer who has deployed one
+# example can read the next one's parameters without relearning them.
+required_parameters:
+  - GrafanaCloudLokiEndpoint
+  - GrafanaCloudLokiTenantId
+  - CredentialsSecretId
+  - LambdaRuntime
+  - AllowPreviewRuntime
+  - LogRetentionInDays
+
+# Resource types every template must create.
+required_resource_types:
+  - AWS::IAM::Role
+  - AWS::Logs::LogGroup
+  - AWS::Lambda::Function
+  - AWS::CloudWatch::Alarm
+
+required_outputs:
+  - FunctionName
+  - LogGroupName
+
+# A parameter whose name matches one of these must not carry a default value.
+# A default credential is either a real one committed by accident or a
+# placeholder that deploys and then fails at runtime with a 401.
+secret_parameter_patterns:
+  - "(?i)token"
+  - "(?i)password"
+  - "(?i)secret_?string"
+  - "(?i)api_?key"
+  - "(?i)private_?key"
+  - "(?i)credential(?!s_?(secret_?id|kms_?key_?arn))"
+
+rules:
+  runtime_parameter:
+    parameter: LambdaRuntime
+    # Must be a closed allowlist, not free text: a typo in a runtime identifier
+    # is otherwise a stack failure at create time with an opaque message.
+    require_allowed_values: true
+    # Every offered value must appear under `runtimes` above.
+    values_from_runtimes: true
+    # The default must be GA.
+    default_must_be_ga: true
+
+  preview_runtime_gate:
+    # Offering a preview runtime requires the opt-in parameter and a guard that
+    # actually stops the deploy. CloudFormation has no assertion primitive, so
+    # the guard is a WaitCondition that cannot succeed.
+    requires_parameter: AllowPreviewRuntime
+    requires_condition_referencing: AllowPreviewRuntime
+    requires_resource_type: AWS::CloudFormation::WaitCondition
+
+  log_retention:
+    parameter: LogRetentionInDays
+    # 0 means never expire, which is a slow-growing bill nobody notices.
+    forbid_allowed_value: 0
+    require_allowed_values: true
+
+  log_group_is_explicit:
+    # An implicitly created log group has no retention and no tags, and the
+    # stack never learns it exists.
+    require_resource_type: AWS::Logs::LogGroup
+    require_property_on_type:
+      type: AWS::Logs::LogGroup
+      property: RetentionInDays
+
+  partial_batch_failure:
+    # Without this, Lambda ignores the handler's batchItemFailures response and
+    # redelivers the whole batch when one message fails, duplicating every line
+    # the successful messages already shipped.
+    when_resource_type_present: AWS::Lambda::EventSourceMapping
+    require_property_value:
+      type: AWS::Lambda::EventSourceMapping
+      property: FunctionResponseTypes
+      contains: ReportBatchItemFailures
+
+  dead_letter_queue:
+    # A failure with nowhere to land is a failure you find out about from a
+    # customer.
+    when_resource_type_present: AWS::SQS::Queue
+    require_property_on_type:
+      type: AWS::SQS::Queue
+      property: RedrivePolicy
+      at_least_one: true
+
+  no_wildcard_iam_resources:
+    # A reference example is read and copied. A "Resource": "*" in one is copied
+    # into production by someone who trusted it.
+    forbid_iam_resource: "*"
+    # Actions may be wildcarded within a service prefix only where the resource
+    # is itself constrained; a bare "*" action is never allowed.
+    forbid_iam_action: "*"
+
+  no_credentials_in_environment:
+    # Environment variables are readable by anyone with
+    # lambda:GetFunctionConfiguration, and land in Terraform state in plaintext.
+    forbid_environment_variable_patterns:
+      - "(?i)^.*_?token$"
+      - "(?i)^.*password.*$"
+      - "(?i)^.*api_?key.*$"
+      - "(?i)^.*secret_?string$"

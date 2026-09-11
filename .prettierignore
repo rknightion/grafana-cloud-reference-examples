@@ -1,0 +1,23 @@
+dist/
+build/
+.tools/
+.venv/
+node_modules/
+uv.lock
+package-lock.json
+**/.terraform/
+*.tf
+*.tfvars.example
+CHANGELOG.md
+
+# Prettier owns TypeScript, JavaScript and JSON here, and nothing else.
+#
+# Markdown: prose reflowing is churn, and these READMEs ship to customers where a
+# hand-chosen line break is sometimes deliberate.
+*.md
+
+# YAML: CloudFormation templates use flow mappings and nested !If structures that
+# prettier reflows into something much harder to read, and cfn-lint plus
+# actionlint already cover correctness.
+*.yaml
+*.yml

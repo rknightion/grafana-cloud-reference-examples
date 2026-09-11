@@ -1,0 +1,17 @@
+name: scorecard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "27 4 * * 1"
+  workflow_dispatch: {}
+
+permissions: {}
+
+jobs:
+  analysis:
+    permissions:
+      security-events: write # upload the SARIF results
+      id-token: write # OIDC, to publish results and the badge to the OpenSSF API
+    uses: rknightion/.github/.github/workflows/scorecard.yml@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
