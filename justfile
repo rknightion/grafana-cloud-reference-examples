@@ -9,7 +9,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 TERRAFORM_VERSION := "1.16.2"
 
 # renovate: datasource=github-releases depName=terraform-linters/tflint
-TFLINT_VERSION := "0.60.0"
+TFLINT_VERSION := "0.64.0"
 
 TOOLS_DIR := justfile_directory() / ".tools"
 DIST_DIR := justfile_directory() / "dist"
