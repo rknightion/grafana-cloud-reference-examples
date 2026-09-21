@@ -24,7 +24,7 @@ jobs:
   actionlint:
     permissions:
       contents: read
-    uses: rknightion/.github/.github/workflows/actionlint.yml@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+    uses: rknightion/.github/.github/workflows/actionlint.yml@e6d074e42fed0c74b1e9936637b7e2fb21403779 # v1.22.0
 
   # Skipped while this repo is private: both of these upload SARIF to the
   # Security tab, and code scanning on a private repo needs GitHub Advanced
@@ -38,7 +38,7 @@ jobs:
       contents: read
       security-events: write # upload SARIF
       actions: read # matches the reusable's declared job permissions, else startup_failure
-    uses: rknightion/.github/.github/workflows/zizmor.yml@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+    uses: rknightion/.github/.github/workflows/zizmor.yml@e6d074e42fed0c74b1e9936637b7e2fb21403779 # v1.22.0
 
   codeql:
     if: ${{ github.event.repository.private == false }}
@@ -47,7 +47,7 @@ jobs:
       packages: read
       actions: read
       contents: read
-    uses: rknightion/.github/.github/workflows/codeql.yml@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+    uses: rknightion/.github/.github/workflows/codeql.yml@e6d074e42fed0c74b1e9936637b7e2fb21403779 # v1.22.0
     with:
       languages: >-
         [{"language":"python","build-mode":"none"},
@@ -86,7 +86,7 @@ jobs:
         run: command -v rg >/dev/null 2>&1 || sudo apt-get install -y ripgrep
 
       - name: Install just
-        uses: rknightion/.github/.github/actions/setup-just@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+        uses: rknightion/.github/.github/actions/setup-just@e6d074e42fed0c74b1e9936637b7e2fb21403779 # v1.22.0
 
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
@@ -158,7 +158,7 @@ jobs:
           persist-credentials: false
 
       - name: Install just
-        uses: rknightion/.github/.github/actions/setup-just@81fc55183265da0b21e92e690f70d679b20ed822 # v1.21.0
+        uses: rknightion/.github/.github/actions/setup-just@e6d074e42fed0c74b1e9936637b7e2fb21403779 # v1.22.0
 
       - name: Install uv
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
