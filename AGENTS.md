@@ -185,3 +185,17 @@ A change to `common/` fans out as a minor bump on every consuming example.
 - `docs/architecture.md` - read before changing the packaging, release or conformance machinery
 - `common/terraform/modules/README.md` - read before adding or changing a shared module
 - `common/cloudformation/README.md` - read before adding a CloudFormation template
+
+## Tracker
+
+Tasks are `GRE-NNNN` in `backlog/`. Read the **Agent fan-out protocol (canonical)** doc before
+designing a wave, and the **Wave operating model** doc for this repo's own rules; the operating model
+wins on anything about this repo. `backlog doc list --plain` shows both.
+
+Tracker traps:
+
+- **Never `--notes`, `--plan` or `--final-summary` bare.** They silently replace the whole section
+  and exit 0. Use the `--append-*` forms.
+- **Finalize in one call**: `backlog task edit <id> --check-ac 1 --check-ac 2 -s Done`.
+- `backlog/` is committed and public: no credential, stack/org/tenant ID, email, public IP or
+  internal hostname in a task or doc.
