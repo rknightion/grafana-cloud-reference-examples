@@ -268,3 +268,6 @@ node_modules/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Machine-local agent artefacts, never committed
+codex/
