@@ -1,6 +1,6 @@
 {
   "common/nodejs": "0.1.0",
-  "common/python": "0.1.0",
+  "common/python": "0.2.0",
   "examples/adobe-aem": "0.2.0",
   "examples/generic-s3": "0.1.0"
 }
