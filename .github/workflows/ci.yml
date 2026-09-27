@@ -108,7 +108,7 @@ jobs:
           # Keep in step with the TERRAFORM_VERSION pin in the justfile. Both
           # sides pinning is safe here because they pin the same value; a
           # mismatch shows up as a fmt or validate failure, not silently.
-          terraform_version: 1.16.1
+          terraform_version: v1.16.4
           terraform_wrapper: false
 
       - name: Install tflint
