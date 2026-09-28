@@ -271,3 +271,6 @@ node_modules/
 
 # Machine-local agent artefacts, never committed
 codex/
+
+# loop-pi (pi-subagents writes .pi/subagents/)
+.pi/
