@@ -72,6 +72,21 @@ one-zip-is-the-whole-deliverable property that makes these examples useful.
 no third-party code. AWS-specific helpers live under `grafana_cloud_common.aws` and may import
 `boto3`. Keep that split.
 
+## Check Powertools for AWS Lambda before building Lambda plumbing
+
+Before writing event parsing, partial batch failure, idempotency, parameter caching, streaming or
+log sampling by hand, check whether Powertools for AWS Lambda (Python, or TypeScript for Node)
+already does it. Where it does, use it rather than inventing it:
+
+- An example declares `aws-lambda-powertools` in its own `pyproject.toml` (or
+  `@aws-lambda-powertools/*` in its `package.json`) and `just package` vendors it into the zip, as
+  it does `pymongo`. Never add it to `common/python`'s core, which stays standard library only.
+- Never use the Powertools Lambda layer. A layer breaks the one-zip deliverable.
+- Skip Tracer and Metrics. They emit to X-Ray and CloudWatch EMF; telemetry here goes to Grafana
+  Cloud over OTLP or the Loki push API.
+- Where an example stays dependency-free, copy the behaviour into `common/` and name the Powertools
+  utility it follows in a comment, as `grafana_cloud_common.log.sample_debug` does.
+
 ## Terraform
 
 Shared modules are sourced by relative path in-repo (`../../../common/terraform/modules/<m>`).

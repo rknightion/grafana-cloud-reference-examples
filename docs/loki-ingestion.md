@@ -121,12 +121,43 @@ Three things handle this:
 Set `reserved_concurrency` before pointing an example at a bucket with a large
 existing backlog. It is the only thing that actually bounds the fan-out.
 
-**Duplicates after a failure are expected and harmless.** Loki deduplicates
-entries identical in timestamp, labels and line content within a stream, and a
-redelivered SQS batch produces exactly that. This is also why
-`ReportBatchItemFailures` matters: without it a single bad object forces
-redelivery of the whole batch, and while the duplicates are deduplicated, the
-ingest is paid for twice.
+### Delivery is at-least-once
+
+Every Loki example can ship a line more than once. A retried push after a timeout
+the server actually completed, an SQS redelivery, a DLQ redrive: each sends
+lines Loki may already hold. That is the design, not a bug, and there is no
+idempotency store behind it.
+
+**Whether Loki can collapse the copy depends on the timestamp.** Loki treats two
+entries as the same only when their labels, line content and nanosecond timestamp
+all match. It rejects such a copy at ingest while the original is still in the
+ingester's head block, and merges identical entries on read. Neither is a
+guarantee: a copy that arrives after the original was flushed, or a query whose
+partial responses are merged, can still show both.
+
+- **Event time** (`TIMESTAMP_FIELD` in `generic-s3`, the line's own timestamp in
+  `adobe-aem`): a redelivered line is identical, so Loki usually collapses it.
+- **Ingestion time**, the `generic-s3` default and the fallback everywhere: a
+  redelivered object is restamped, so both copies are always kept and a query
+  counts them twice.
+
+Prefer event time wherever the data carries one. `ReportBatchItemFailures` is
+what keeps the blast radius to one message: without it a single bad object
+redelivers the whole batch, and at ingestion time every line in it is doubled.
+
+**Nothing here gives exactly-once.** An idempotency store, a DynamoDB table keyed
+on the object's bucket, key and version with a conditional write (what Powertools'
+Idempotency utility provides), stops a redelivered message being processed again.
+It cannot commit atomically with the Loki push, so a function that dies after the
+push and before recording completion still ships the object twice on retry. It
+narrows the window; it does not close it. The examples do not ship one: it adds a
+table, IAM and a per-object write to every deployment for a partial fix.
+
+**SQS FIFO queues are not supported as the source.** S3 event notifications
+cannot target a FIFO queue, so this only arises if you route through EventBridge
+into one. The partial-failure handling reports each failed message on its own
+and does not stop at the first failure within a message group, so a FIFO queue
+would lose its ordering guarantee on a retry.
 
 ## Why JSON rather than protobuf
 
