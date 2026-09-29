@@ -17,10 +17,18 @@ from __future__ import annotations
 import json
 import logging
 import os
+import random
 import sys
+from collections.abc import Callable
 from typing import Any
 
+from .errors import ConfigError
+
 _REDACTED = "***redacted***"
+
+# Set by configure(), read by sample_debug() on every invocation.
+_base_level = logging.INFO
+_debug_sample_rate = 0.0
 
 # Anything whose key looks like one of these is replaced before serialisation.
 # A log line carrying a Cloud Access Policy token is a credential leak into
@@ -108,16 +116,37 @@ class FieldLogger:
         self._emit(logging.ERROR, message, exc_info, fields)
 
 
-def configure(level: str | None = None) -> None:
+def _sample_rate_from_env() -> float:
+    raw = (os.environ.get("LOG_DEBUG_SAMPLE_RATE") or "").strip()
+    if not raw:
+        return 0.0
+    try:
+        return float(raw)
+    except ValueError as exc:
+        raise ConfigError(f"LOG_DEBUG_SAMPLE_RATE must be a number, got {raw!r}") from exc
+
+
+def configure(level: str | None = None, debug_sample_rate: float | None = None) -> None:
     """Install the JSON formatter on the root logger. Call once, at cold start.
 
     The Lambda Python runtime installs its own root handler before user code
     runs, so adding a handler produces duplicate lines. Reconfigure the existing
     one instead.
+
+    ``debug_sample_rate`` (else ``LOG_DEBUG_SAMPLE_RATE``) is the fraction of
+    invocations that log at DEBUG, decided per invocation by ``sample_debug``.
     """
+    global _base_level, _debug_sample_rate
+
+    rate = _sample_rate_from_env() if debug_sample_rate is None else debug_sample_rate
+    if not 0.0 <= rate <= 1.0:
+        raise ConfigError(f"LOG_DEBUG_SAMPLE_RATE must be between 0 and 1, got {rate}")
+
     resolved = (level or os.environ.get("LOG_LEVEL") or "INFO").upper()
     root = logging.getLogger()
     root.setLevel(resolved)
+    _base_level = root.level
+    _debug_sample_rate = rate
 
     if root.handlers:
         for handler in root.handlers:
@@ -131,6 +160,25 @@ def configure(level: str | None = None) -> None:
     # function's own lines and costs real money in CloudWatch ingest.
     logging.getLogger("botocore").setLevel(max(logging.INFO, root.level))
     logging.getLogger("urllib3").setLevel(max(logging.INFO, root.level))
+
+
+def sample_debug(roll: Callable[[], float] = random.random) -> bool:
+    """Decide whether this invocation logs at DEBUG. Call first in every handler.
+
+    Borrowed from Powertools' Logger sampling: DEBUG on every invocation costs
+    real CloudWatch ingest, DEBUG on none leaves nothing to diagnose a rare
+    failure with. Decided per invocation and reset every time, because a warm
+    container that sampled once would otherwise stay at DEBUG for its lifetime.
+    botocore and urllib3 stay at their configure()-time level either way.
+    """
+    sampled = _debug_sample_rate > 0.0 and roll() < _debug_sample_rate
+    logging.getLogger().setLevel(logging.DEBUG if sampled else _base_level)
+    if sampled:
+        logging.getLogger(__name__).debug(
+            "debug sampled for this invocation",
+            extra={"fields": {"debug_sample_rate": _debug_sample_rate}},
+        )
+    return sampled
 
 
 def get_logger(name: str, **fields: Any) -> FieldLogger:

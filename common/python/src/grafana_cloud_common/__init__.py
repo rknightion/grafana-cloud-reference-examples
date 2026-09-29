@@ -17,7 +17,7 @@ from .errors import (
     PermanentError,
     RetryableError,
 )
-from .log import FieldLogger, configure, get_logger
+from .log import FieldLogger, configure, get_logger, sample_debug
 from .loki import (
     BANNED_LABEL_NAMES,
     MAX_LABELS_PER_STREAM,
@@ -48,5 +48,6 @@ __all__ = [
     "get_logger",
     "group_by_labels",
     "normalise_push_url",
+    "sample_debug",
     "validate_labels",
 ]
