@@ -190,6 +190,7 @@ editing the function by hand.
 | `LOKI_COMPRESS` | `true` | gzip the push body. |
 | `LOKI_MAX_RETRIES` | `5` | Attempts per batch before giving up. |
 | `LOG_LEVEL` | `INFO` | The function's own logging, not the data being shipped. |
+| `LOG_DEBUG_SAMPLE_RATE` | `0` | Fraction of invocations, 0 to 1, that log at DEBUG whatever `LOG_LEVEL` says. `0.05` gives DEBUG detail to diagnose with while paying for it on one invocation in twenty. |
 
 ### Labels, and what deliberately is not one
 
@@ -273,9 +274,11 @@ selector with no pipeline at all, over *Last 6 hours*.
 **AccessDenied on GetObject.** The role is scoped to `source_prefix`. If you
 changed the prefix after applying, re-apply so the policy follows.
 
-**Objects processed twice.** Expected after a retry, and harmless: Loki
-deduplicates entries identical in timestamp, labels and line content within a
-stream, and a redelivered batch produces exactly that.
+**Lines appear twice.** Expected after a retry: delivery is at-least-once. By
+default every line is stamped with ingestion time, so a redelivered object gets
+new timestamps and Loki keeps both copies. Set `TIMESTAMP_FIELD` and a
+redelivered line carries the same event time, which Loki usually collapses. See
+[Pushing to Loki](https://github.com/rknightion/grafana-cloud-reference-examples/blob/main/docs/loki-ingestion.md#delivery-is-at-least-once).
 
 **Something is in the dead-letter queue.** The message carries the original S3
 notification, so redriving it after a fix reprocesses exactly the objects that

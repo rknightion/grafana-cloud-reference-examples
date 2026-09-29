@@ -136,6 +136,21 @@ variable "log_level" {
   }
 }
 
+variable "log_debug_sample_rate" {
+  description = <<-EOT
+    Fraction of invocations, 0 to 1, that log at DEBUG regardless of log_level.
+    0.05 gives a steady trickle of DEBUG detail to diagnose with, without paying
+    CloudWatch ingest for DEBUG on every invocation. Decided per invocation.
+  EOT
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.log_debug_sample_rate >= 0 && var.log_debug_sample_rate <= 1
+    error_message = "log_debug_sample_rate must be between 0 and 1."
+  }
+}
+
 variable "extra_environment_variables" {
   description = "Additional environment variables merged over the ones this module sets."
   type        = map(string)

@@ -20,5 +20,6 @@
   { "ParameterKey": "LambdaCodeS3Key", "ParameterValue": "generic-s3/lambda.zip" },
 
   { "ParameterKey": "LogLevel", "ParameterValue": "INFO" },
+  { "ParameterKey": "LogDebugSampleRate", "ParameterValue": "0" },
   { "ParameterKey": "LogRetentionInDays", "ParameterValue": "30" }
 ]

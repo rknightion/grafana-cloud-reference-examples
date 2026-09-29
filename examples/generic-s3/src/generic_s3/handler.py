@@ -26,6 +26,7 @@ from grafana_cloud_common import (
     StreamBatcher,
     configure,
     get_logger,
+    sample_debug,
 )
 from grafana_cloud_common.aws import (
     CredentialProvider,
@@ -209,6 +210,7 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
     redelivering one bad message and redelivering the whole batch - which would
     duplicate every line already shipped.
     """
+    sample_debug()
     log = _LOG.bind(aws_request_id=getattr(context, "aws_request_id", "local"))
     messages = parse_event(event)
     if not messages:
