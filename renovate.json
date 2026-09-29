@@ -6,7 +6,9 @@
   "prConcurrentLimit": 5,
   "labels": ["dependencies"],
   "commitMessagePrefix": "deps:",
-  "lockFileMaintenance": { "enabled": true },
+  "lockFileMaintenance": {
+    "enabled": true
+  },
   "customManagers": [
     {
       "description": "Tool versions pinned in the justfile, annotated with # renovate: comments.",
@@ -58,7 +60,21 @@
       "description": "Dev tooling churns; batch it rather than one PR per bump.",
       "matchDepTypes": ["devDependencies", "dev"],
       "groupName": "dev tooling"
+    },
+    {
+      "description": "Automerge everything short of a major once ci-success passes. ci-success is the required check on main and covers just check, every example's release bundle and a reproducible-build diff, so a bump that breaks anything never merges. Merges through GitHub auto-merge, so branch protection still decides.",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "pinDigest", "lockFileMaintenance"],
+      "automerge": true,
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "Our own reusable workflows need no quarantine period.",
+      "matchPackageNames": ["rknightion/.github"],
+      "minimumReleaseAge": null
     }
   ],
-  "vulnerabilityAlerts": { "labels": ["security"], "schedule": ["at any time"] }
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  }
 }
