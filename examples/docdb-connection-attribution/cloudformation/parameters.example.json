@@ -21,5 +21,6 @@
   },
 
   { "ParameterKey": "LogLevel", "ParameterValue": "INFO" },
+  { "ParameterKey": "LogDebugSampleRate", "ParameterValue": "0" },
   { "ParameterKey": "LogRetentionInDays", "ParameterValue": "30" }
 ]

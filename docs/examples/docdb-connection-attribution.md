@@ -183,6 +183,7 @@ aws cloudformation deploy \
 | `GRAFANA_CLOUD_CREDENTIALS_SECRET_ID` | required | Secret with `{"tenant_id", "token"}`, or a bare token. |
 | `INCLUDE_CLIENT_ADDRESS` | `false` | Add the client host (no port) as the `client_address` label. |
 | `LOG_LEVEL` | `INFO` | The function's own log level. |
+| `LOG_DEBUG_SAMPLE_RATE` | `0` | Fraction of invocations, 0 to 1, that log at DEBUG whatever `LOG_LEVEL` says. `0.05` gives DEBUG detail to diagnose with while paying for it on one invocation in twenty. |
 
 The schedule is `rate(1 minute)` by default.
 

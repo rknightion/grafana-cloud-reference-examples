@@ -42,6 +42,7 @@ credentials_secret_id = "grafana-cloud/otlp"
 
 # The function's own operational logs, not the data being shipped.
 log_level          = "INFO"
+log_debug_sample_rate = 0
 log_retention_days = 30
 
 # Uncomment to notify somewhere when the function errors or throttles.

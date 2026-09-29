@@ -44,7 +44,8 @@ locals {
 
       INCLUDE_CLIENT_ADDRESS = tostring(var.include_client_address)
 
-      LOG_LEVEL = var.log_level
+      LOG_LEVEL             = var.log_level
+      LOG_DEBUG_SAMPLE_RATE = tostring(var.log_debug_sample_rate)
     },
     var.extra_environment_variables,
   )

@@ -14,7 +14,7 @@ import boto3
 from botocore.config import Config as BotoConfig
 from pymongo.errors import PyMongoError
 
-from grafana_cloud_common import ConfigError, configure, get_logger
+from grafana_cloud_common import ConfigError, configure, get_logger, sample_debug
 from grafana_cloud_common.aws import CredentialProvider, LambdaContext
 
 from .attribution import UNATTRIBUTED, SeriesKey, group_connections
@@ -61,6 +61,7 @@ def _lookup(instance: str, users: dict[tuple[str, str], str]) -> Callable[[str],
 
 
 def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, Any]:
+    sample_debug()
     ingested = ingest(
         LOGS,
         STORE,
