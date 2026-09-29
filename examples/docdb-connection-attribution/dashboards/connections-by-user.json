@@ -1,0 +1,233 @@
+{
+  "uid": "docdb-conn-attribution",
+  "title": "DocumentDB open connections by user",
+  "tags": [
+    "docdb",
+    "reference-example"
+  ],
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": {},
+        "hide": 0,
+        "label": "Prometheus data source"
+      },
+      {
+        "name": "cluster",
+        "type": "query",
+        "datasource": {
+          "uid": "${datasource}"
+        },
+        "query": {
+          "query": "label_values(docdb_connections_open, docdb_cluster)",
+          "refId": "v"
+        },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": {},
+        "label": "Cluster"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Open connections",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Unattributed (driver heartbeats, or opened before audit lookback)",
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_user=\"<unattributed>\"}[2m])) or vector(0)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "bargauge",
+      "title": "Top users by open connections",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 5
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "basic"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(10, sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_user!=\"<unattributed>\"}[2m])))",
+          "instant": true,
+          "legendFormat": "{{docdb_user}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Open connections by user",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30,
+            "lineInterpolation": "stepAfter"
+          }
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))",
+          "legendFormat": "{{docdb_user}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Connections by user, app, client and instance (latest snapshot)",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (docdb_cluster, docdb_instance, docdb_user, docdb_app_name, client_address) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "instance": true,
+              "service_instance_id": true,
+              "job": true,
+              "service_name": true,
+              "__name__": true
+            },
+            "renameByName": {
+              "Value": "connections"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "connections",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Raw series: docdb_connections_open (every label, latest value)",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m])",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "service_name": true,
+              "instance": true,
+              "service_instance_id": true
+            },
+            "renameByName": {
+              "Value": "value"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "description": "Each attributor run pushes one snapshot. Queries use last_over_time(...[2m]) so a series disappears within two runs of its connections closing, instead of lingering for the 5-minute lookback."
+}

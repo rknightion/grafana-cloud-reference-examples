@@ -440,8 +440,32 @@ def check_runtime_agreement(
 # --- CloudFormation conformance ------------------------------------------------
 
 
-def check_template(path: Path, conformance: dict[str, Any], report: Report) -> None:
-    where = str(path.relative_to(REPO_ROOT))
+def _template_destinations(path: Path) -> list[str]:
+    """Destinations the template's example writes to, from its example.yaml.
+
+    The shared reference templates under common/ are Loki shippers.
+    """
+    manifest_path = path.parent.parent / "example.yaml"
+    if not manifest_path.is_file():
+        return ["grafana-cloud-loki"]
+    try:
+        manifest = load_yaml(manifest_path)
+    except yaml.YAMLError:
+        return []  # check_manifest reports the parse failure
+    destinations = manifest.get("destinations") if isinstance(manifest, dict) else None
+    return [str(d) for d in destinations] if isinstance(destinations, list) else []
+
+
+def check_template(
+    path: Path,
+    conformance: dict[str, Any],
+    report: Report,
+    destinations: list[str] | None = None,
+) -> None:
+    try:
+        where = str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        where = str(path)
     try:
         template = load_yaml(path, cfn=True)
     except yaml.YAMLError as exc:
@@ -459,6 +483,18 @@ def check_template(path: Path, conformance: dict[str, Any], report: Report) -> N
     for name in conformance["required_parameters"]:
         if name not in parameters:
             report.fail(where, f"parameter {name} is required by conformance.yaml")
+
+    by_destination: dict[str, list[str]] = (
+        conformance.get("required_parameters_by_destination") or {}
+    )
+    for destination in destinations or []:
+        for name in by_destination.get(destination, []):
+            if name not in parameters:
+                report.fail(
+                    where,
+                    f"parameter {name} is required by conformance.yaml "
+                    f"for destination {destination}",
+                )
 
     for name in conformance["required_outputs"]:
         if name not in outputs:
@@ -730,7 +766,7 @@ def main(argv: list[str] | None = None) -> int:
         ]
     )
     for template_path in templates:
-        check_template(template_path, conformance, report)
+        check_template(template_path, conformance, report, _template_destinations(template_path))
 
     if not args.cloudformation_only:
         check_root_readme(report)

@@ -35,12 +35,20 @@ runtimes:
 # Parameters every template must declare, so a customer who has deployed one
 # example can read the next one's parameters without relearning them.
 required_parameters:
-  - GrafanaCloudLokiEndpoint
-  - GrafanaCloudLokiTenantId
   - CredentialsSecretId
   - LambdaRuntime
   - AllowPreviewRuntime
   - LogRetentionInDays
+
+# Parameters required only when the example writes to that destination, per
+# `destinations` in its example.yaml. The shared reference template is a Loki
+# shipper and is checked as one.
+required_parameters_by_destination:
+  grafana-cloud-loki:
+    - GrafanaCloudLokiEndpoint
+    - GrafanaCloudLokiTenantId
+  grafana-cloud-otlp:
+    - GrafanaCloudOtlpEndpoint
 
 # Resource types every template must create.
 required_resource_types:

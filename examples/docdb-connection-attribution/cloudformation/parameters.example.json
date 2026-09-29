@@ -1,0 +1,25 @@
+[
+  { "ParameterKey": "DocDbClusterId", "ParameterValue": "acme-docdb-cluster" },
+  { "ParameterKey": "DocDbCredentialsSecretId", "ParameterValue": "docdb/connection-attribution" },
+  { "ParameterKey": "DocDbSecurityGroupId", "ParameterValue": "sg-0123456789abcdef0" },
+
+  {
+    "ParameterKey": "GrafanaCloudOtlpEndpoint",
+    "ParameterValue": "https://otlp-gateway-prod-eu-west-2.grafana.net/otlp"
+  },
+  { "ParameterKey": "CredentialsSecretId", "ParameterValue": "grafana-cloud/otlp" },
+  { "ParameterKey": "GrafanaCloudTenantId", "ParameterValue": "123456" },
+
+  { "ParameterKey": "VpcId", "ParameterValue": "vpc-0123456789abcdef0" },
+  { "ParameterKey": "SubnetIds", "ParameterValue": "subnet-0123456789abcdef0" },
+  { "ParameterKey": "VpcCidr", "ParameterValue": "192.0.2.0/24" },
+
+  { "ParameterKey": "LambdaCodeS3Bucket", "ParameterValue": "my-deployment-artifacts" },
+  {
+    "ParameterKey": "LambdaCodeS3Key",
+    "ParameterValue": "docdb-connection-attribution/lambda.zip"
+  },
+
+  { "ParameterKey": "LogLevel", "ParameterValue": "INFO" },
+  { "ParameterKey": "LogRetentionInDays", "ParameterValue": "30" }
+]

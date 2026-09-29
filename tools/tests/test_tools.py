@@ -152,6 +152,42 @@ class TestConformanceRules:
         loaded: dict[str, Any] = conformance.load_yaml(conformance.CONFORMANCE_PATH)
         return loaded
 
+    @staticmethod
+    def _minimal_template(tmp_path: Path, parameters: list[str]) -> Path:
+        path = tmp_path / "template.yaml"
+        path.write_text(
+            "Parameters:\n"
+            + "".join(f"  {name}:\n    Type: String\n" for name in parameters)
+            + "Resources: {}\n"
+        )
+        return path
+
+    def test_loki_parameters_are_required_for_a_loki_example(
+        self, rules: dict[str, Any], tmp_path: Path
+    ) -> None:
+        report = conformance.Report()
+        path = self._minimal_template(tmp_path, ["CredentialsSecretId"])
+        conformance.check_template(path, rules, report, destinations=["grafana-cloud-loki"])
+        assert any("GrafanaCloudLokiEndpoint" in f for f in report.failures)
+
+    def test_an_otlp_example_does_not_need_loki_parameters(
+        self, rules: dict[str, Any], tmp_path: Path
+    ) -> None:
+        """Requiring Loki parameters of a metrics-over-OTLP example would force a
+        template to declare inputs it never uses."""
+        report = conformance.Report()
+        path = self._minimal_template(tmp_path, ["GrafanaCloudOtlpEndpoint"])
+        conformance.check_template(path, rules, report, destinations=["grafana-cloud-otlp"])
+        assert not any("Loki" in f for f in report.failures)
+
+    def test_an_otlp_example_needs_the_otlp_endpoint(
+        self, rules: dict[str, Any], tmp_path: Path
+    ) -> None:
+        report = conformance.Report()
+        path = self._minimal_template(tmp_path, [])
+        conformance.check_template(path, rules, report, destinations=["grafana-cloud-otlp"])
+        assert any("GrafanaCloudOtlpEndpoint" in f for f in report.failures)
+
     def test_a_credential_parameter_with_a_default_fails(self, rules: dict[str, Any]) -> None:
         report = conformance.Report()
         conformance._check_secret_defaults(

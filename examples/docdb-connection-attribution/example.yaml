@@ -1,0 +1,46 @@
+# The manifest is the single source of truth for this example. `just lint` fails
+# if the Terraform variable default or the CloudFormation parameter default
+# disagrees with `runtime` here.
+name: docdb-connection-attribution
+title: Amazon DocumentDB open connections attributed to database users
+summary: >-
+  Joins DocumentDB's $currentOp open-connection list to the audit log's
+  authenticate events by client ip:port, so idle connections, which carry no
+  user of their own, are attributed to the database user that opened them. A
+  scheduled VPC Lambda exports a gauge per user and app to Grafana Cloud over
+  OTLP. Ships a dashboard.
+status: alpha
+platform: aws
+deliverable: lambda-zip
+
+runtime:
+  identifier: python3.14
+  # Preview runtimes carry no SLA and no support, so they are never the default.
+  preview_alternative: python3.15
+  architecture: arm64
+
+lambda:
+  handler: docdb_connection_attribution.handler.lambda_handler
+  package_root: src
+  # pymongo, the OTel SDK and one small snapshot per run; 256 MB is ample.
+  memory_mb: 256
+  # One snapshot plus an audit read that stops itself 20 s before the deadline
+  # and resumes on the next run, so a first-run backfill cannot time out.
+  timeout_seconds: 60
+
+destinations:
+  - grafana-cloud-otlp
+
+iac:
+  terraform: terraform
+  cloudformation: cloudformation/template.yaml
+
+release:
+  component: docdb-connection-attribution
+
+notes:
+  - >-
+    Verified against a live DocumentDB 5.0 cluster with two instances. The
+    least-privilege user (clusterMonitor plus read on admin), audit_logs=ddl
+    being sufficient, and the per-instance query all come from testing, not
+    from AWS documentation.

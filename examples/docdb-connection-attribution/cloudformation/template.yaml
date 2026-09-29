@@ -1,0 +1,631 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# docdb-connection-attribution: attribute Amazon DocumentDB open connections to
+# database users and export a gauge per user/app to Grafana Cloud over OTLP.
+#
+# Standalone by design. Copied from
+# common/cloudformation/templates/lambda-s3-loki.reference.yaml rather than
+# nesting it: a nested stack needs its children staged in S3 first, which would
+# break the property that makes this useful - one downloaded zip, deployable on
+# its own. `just lint` checks this template against
+# common/cloudformation/conformance.yaml so the copy cannot drift on the things
+# that matter.
+#
+# ../terraform deploys the same thing. The only real difference is that
+# CloudFormation cannot upload function code from your machine, so the zip must
+# be in S3 first; the Terraform path uploads it for you.
+#
+# Names, environment variables, IAM actions, network shape and outputs are a
+# frozen contract shared with the Terraform path and the function itself. Do
+# not rename or add to any of them without updating all three.
+
+Description: >-
+  docdb-connection-attribution: an AWS Lambda that joins Amazon DocumentDB's
+  $currentOp open-connection list to the audit log's authenticate events by
+  client ip:port, attributing every open connection to the database user and
+  application that opened it, and exports a gauge per user/app to Grafana
+  Cloud over OTLP on a schedule.
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label: { default: DocumentDB }
+        Parameters:
+          - DocDbClusterId
+          - DocDbCredentialsSecretId
+          - DocDbCredentialsKmsKeyArn
+          - DocDbSecurityGroupId
+          - AuditLogGroup
+          - AuditBackfillMinutes
+      - Label: { default: Attribution }
+        Parameters: [MappingTtlDays, IncludeClientAddress, ScheduleExpression]
+      - Label: { default: Grafana Cloud }
+        Parameters:
+          - GrafanaCloudOtlpEndpoint
+          - CredentialsSecretId
+          - CredentialsKmsKeyArn
+          - GrafanaCloudTenantId
+      - Label: { default: Network }
+        Parameters: [VpcId, SubnetIds, VpcCidr]
+      - Label: { default: Function code }
+        Parameters: [LambdaCodeS3Bucket, LambdaCodeS3Key, LambdaCodeS3ObjectVersion, LambdaHandler]
+      - Label: { default: Runtime and sizing }
+        Parameters: [LambdaRuntime, AllowPreviewRuntime, MemorySize, TimeoutSeconds]
+      - Label: { default: Observability }
+        Parameters: [LogLevel, LogRetentionInDays, AlarmTopicArn]
+
+Parameters:
+  # --- DocumentDB -------------------------------------------------------------
+  DocDbClusterId:
+    Type: String
+    Description: >-
+      DocumentDB cluster identifier (not the ARN). Used to describe the
+      cluster and its instances, and as the default audit log group name.
+
+  DocDbCredentialsSecretId:
+    Type: String
+    Description: >-
+      Name or ARN of an EXISTING Secrets Manager secret holding DocumentDB
+      credentials, JSON {"username": ..., "password": ...}. The function needs
+      no write access to the cluster: this is used only to open a read-only
+      admin connection for $currentOp.
+
+  DocDbCredentialsKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      KMS key ARN if the DocumentDB credentials secret uses a customer-managed
+      key. Reading such a secret needs kms:Decrypt as well as
+      secretsmanager:GetSecretValue; without it the failure names Secrets
+      Manager and sends you to the wrong policy.
+
+  DocDbSecurityGroupId:
+    Type: String
+    Default: ""
+    Description: >-
+      Security group id attached to the DocumentDB cluster. When set, this
+      stack adds an ingress rule to it allowing tcp/27017 from the function's
+      own security group. Leave empty if the cluster's security group already
+      permits the function, or if you will add that rule yourself.
+
+  AuditLogGroup:
+    Type: String
+    Default: ""
+    Description: >-
+      CloudWatch Logs group holding the DocumentDB audit log. The cluster needs a
+      custom parameter group with audit_logs=ddl and its audit log export to
+      CloudWatch Logs enabled. Empty defaults to /aws/docdb/<DocDbClusterId>/audit.
+
+  AuditBackfillMinutes:
+    Type: Number
+    Default: 10080
+    MinValue: 1
+    Description: >-
+      Minutes of audit log history to read on the function's first run, before
+      a checkpoint exists in the attribution table. Default is 7 days.
+
+  # --- Attribution --------------------------------------------------------
+  MappingTtlDays:
+    Type: Number
+    Default: 14
+    MinValue: 1
+    Description: Days an idle client-address-to-user mapping is kept before it expires.
+
+  IncludeClientAddress:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >-
+      Whether to add the connecting client.address as a metric data point
+      attribute. Off by default: a client address is high-cardinality in most
+      fleets, so this is an explicit opt-in rather than the default.
+
+  ScheduleExpression:
+    Type: String
+    Default: rate(1 minute)
+    Description: >-
+      EventBridge schedule that invokes the function. The event payload is
+      ignored; each invocation re-reads DocumentDB's current state.
+
+  # --- Grafana Cloud --------------------------------------------------------
+  GrafanaCloudOtlpEndpoint:
+    Type: String
+    Description: >-
+      Grafana Cloud OTLP endpoint, for example
+      https://otlp-gateway-prod-eu-west-2.grafana.net/otlp
+
+  CredentialsSecretId:
+    Type: String
+    Description: >-
+      Name or ARN of an EXISTING Secrets Manager secret holding the Grafana
+      Cloud credential: JSON {"tenant_id": "<stack instance id>", "token":
+      "glc_..."}, or a bare token string (then the tenant id comes from
+      GrafanaCloudTenantId). Create it before deploying, from a file so the
+      token does not land in your shell history:
+
+        umask 077 && printf '%s' '{"tenant_id":"123456","token":"glc_..."}' > /tmp/gc.json
+        aws secretsmanager create-secret --name grafana-cloud/otlp --secret-string file:///tmp/gc.json
+        rm -f /tmp/gc.json
+
+      The token is deliberately not a parameter of this template. NoEcho does
+      mask a parameter value in DescribeStacks and DescribeStackEvents, but it
+      does not redact a value that reaches an Output, a resource property, a
+      resource identifier or template metadata - and the value still has to
+      travel through whatever CI invoked the deploy.
+
+  CredentialsKmsKeyArn:
+    Type: String
+    Default: ""
+    Description: >-
+      KMS key ARN if the Grafana Cloud credentials secret uses a
+      customer-managed key. Reading such a secret needs kms:Decrypt as well as
+      secretsmanager:GetSecretValue; without it the failure names Secrets
+      Manager and sends you to the wrong policy.
+
+  GrafanaCloudTenantId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^[0-9]*$"
+    ConstraintDescription: The Grafana Cloud tenant (instance) id is numeric.
+    Description: >-
+      Numeric Grafana Cloud stack (instance) id. Only needed when
+      CredentialsSecretId holds a bare token rather than a JSON object that
+      already carries tenant_id.
+
+  # --- Network ----------------------------------------------------------------
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC the function and the DocumentDB cluster share.
+
+  SubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Private subnets the function runs in. Must have a route to DocumentDB and, via NAT, to the internet.
+
+  VpcCidr:
+    Type: String
+    AllowedPattern: "^(\\d{1,3}\\.){3}\\d{1,3}/\\d{1,2}$"
+    ConstraintDescription: Must be a CIDR block, for example 192.0.2.0/24.
+    Description: >-
+      CIDR block covering the DocumentDB cluster (typically the VPC CIDR). Used
+      as the destination of the function's tcp/27017 egress rule only when
+      DocDbSecurityGroupId is empty; otherwise the rule targets that group.
+
+  # --- Function code --------------------------------------------------------
+  LambdaCodeS3Bucket:
+    Type: String
+    Description: >-
+      Bucket holding the deployment zip. CloudFormation cannot upload code
+      from your machine, so the zip must be in S3 first. The Terraform path
+      deploys the zip from disk instead.
+
+  LambdaCodeS3Key:
+    Type: String
+    Description: Key of the deployment zip.
+
+  LambdaCodeS3ObjectVersion:
+    Type: String
+    Default: ""
+    Description: >-
+      Object version of the zip. Set this on a versioned bucket: without it,
+      overwriting the zip at the same key leaves CloudFormation seeing no
+      change and the old code keeps running.
+
+  LambdaHandler:
+    Type: String
+    Default: docdb_connection_attribution.handler.lambda_handler
+    Description: Entrypoint. Change this only if you have renamed the module.
+
+  # --- Runtime and sizing ---------------------------------------------------
+  LambdaRuntime:
+    Type: String
+    Default: python3.14
+    AllowedValues:
+      - python3.15
+      - python3.14
+    Description: >-
+      Runtime identifier. The default is the longest-lived GA managed runtime.
+      python3.15 and nodejs26.x are public preview: no SLA, no technical
+      support, and AWS advises against production use, so selecting one also
+      requires AllowPreviewRuntime. Check the live deprecation table at
+      https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
+
+  AllowPreviewRuntime:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: Must be true to deploy a public-preview runtime.
+
+  MemorySize:
+    Type: Number
+    Default: 256
+    MinValue: 128
+    MaxValue: 10240
+    Description: Memory, which also sets the CPU share.
+
+  TimeoutSeconds:
+    Type: Number
+    Default: 60
+    MinValue: 1
+    MaxValue: 900
+    Description: >-
+      Invocation timeout. Runs must not overlap - the checkpoint this function
+      keeps in DynamoDB is single-writer - which is why the function is also
+      deployed with reserved concurrency of 1 rather than a parameter here.
+
+  # --- Observability --------------------------------------------------------
+  LogLevel:
+    Type: String
+    Default: INFO
+    AllowedValues: [DEBUG, INFO, WARNING, ERROR]
+    Description: The function's own logging, not the data being shipped. DEBUG costs CloudWatch ingest.
+
+  LogRetentionInDays:
+    Type: Number
+    Default: 30
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 3653]
+    Description: >-
+      Retention for the function's log group. There is deliberately no
+      never-expire option: that is a slow-growing bill nobody notices.
+
+  AlarmTopicArn:
+    Type: String
+    Default: ""
+    Description: SNS topic notified when an alarm fires. An alarm with no action is decoration.
+
+Conditions:
+  HasCredentialsKmsKey: !Not [!Equals [!Ref CredentialsKmsKeyArn, ""]]
+  HasDocDbCredentialsKmsKey: !Not [!Equals [!Ref DocDbCredentialsKmsKeyArn, ""]]
+  # A full ARN is used as-is; a bare name needs the wildcard suffix Secrets
+  # Manager appends to every secret ARN.
+  IsCredentialsSecretArn: !Equals
+    - !Select [0, !Split [":", !Ref CredentialsSecretId]]
+    - "arn"
+  IsDocDbCredentialsSecretArn: !Equals
+    - !Select [0, !Split [":", !Ref DocDbCredentialsSecretId]]
+    - "arn"
+  HasCodeVersion: !Not [!Equals [!Ref LambdaCodeS3ObjectVersion, ""]]
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, ""]]
+  HasDocDbSecurityGroup: !Not [!Equals [!Ref DocDbSecurityGroupId, ""]]
+  HasAuditLogGroupOverride: !Not [!Equals [!Ref AuditLogGroup, ""]]
+  # A preview runtime selected without the opt-in makes this true, and the guard
+  # resource below then fails the stack with a message that says why.
+  PreviewRuntimeNotPermitted: !And
+    - !Or
+      - !Equals [!Ref LambdaRuntime, python3.15]
+      - !Equals [!Ref LambdaRuntime, nodejs26.x]
+    - !Equals [!Ref AllowPreviewRuntime, "false"]
+
+Resources:
+  # CloudFormation has no assertion primitive, so the guard is a resource that
+  # only exists in the bad case and cannot be created. A WaitConditionHandle
+  # creates no infrastructure and costs nothing; paired with a WaitCondition
+  # whose timeout is zero, it fails fast with the reason in the stack events.
+  PreviewRuntimeGuardHandle:
+    Type: AWS::CloudFormation::WaitConditionHandle
+    Condition: PreviewRuntimeNotPermitted
+
+  PreviewRuntimeGuard:
+    Type: AWS::CloudFormation::WaitCondition
+    Condition: PreviewRuntimeNotPermitted
+    Metadata:
+      Reason: >-
+        The selected LambdaRuntime is in public preview: no Lambda SLA, no
+        technical support, and AWS advises against production use. Set
+        AllowPreviewRuntime to true to proceed deliberately, or pick a GA runtime.
+    Properties:
+      Handle: !Ref PreviewRuntimeGuardHandle
+      Timeout: "1"
+      Count: 1
+
+  # --- Execution role -------------------------------------------------------
+  FunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    # Created explicitly, and deliberately retained on stack delete. A log group
+    # that Lambda creates implicitly has no retention and no tags, and is
+    # invisible to the stack.
+    UpdateReplacePolicy: Retain
+    DeletionPolicy: Retain
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${AWS::StackName}"
+      RetentionInDays: !Ref LogRetentionInDays
+
+  FunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      # ENI create/describe/delete for VPC attachment is inherently
+      # account-wide - AWS does not offer a resource-scoped form - so it is
+      # the one permission taken from the AWS-managed policy rather than
+      # written out, instead of granting it a "Resource": "*" directly.
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+      Policies:
+        # Written out rather than attaching AWSLambdaBasicExecutionRole, which
+        # grants logs:CreateLogGroup across the whole account.
+        - PolicyName: write-own-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub "${FunctionLogGroup.Arn}:*"
+
+        - PolicyName: describe-docdb-cluster
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: rds:DescribeDBClusters
+                Resource: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:cluster:${DocDbClusterId}"
+              - Effect: Allow
+                Action: rds:DescribeDBInstances
+                Resource: !Sub "arn:${AWS::Partition}:rds:${AWS::Region}:${AWS::AccountId}:db:*"
+
+        - PolicyName: read-docdb-audit-log
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: logs:FilterLogEvents
+                Resource: !Sub
+                  - "arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:${EffectiveAuditLogGroup}:*"
+                  - EffectiveAuditLogGroup: !If
+                      - HasAuditLogGroupOverride
+                      - !Ref AuditLogGroup
+                      - !Sub "/aws/docdb/${DocDbClusterId}/audit"
+
+        - PolicyName: read-write-attribution-table
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:BatchGetItem
+                Resource: !GetAtt AttributionTable.Arn
+
+        - PolicyName: read-docdb-credential
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !If
+                  - IsDocDbCredentialsSecretArn
+                  - !Ref DocDbCredentialsSecretId
+                  # Secrets Manager appends a random 6-character suffix to
+                  # every secret's ARN, so a name has to be matched with a
+                  # wildcard.
+                  - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${DocDbCredentialsSecretId}-??????"
+
+        - PolicyName: read-grafana-cloud-credential
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !If
+                  - IsCredentialsSecretArn
+                  - !Ref CredentialsSecretId
+                  - !Sub "arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${CredentialsSecretId}-??????"
+
+  DocDbCredentialKmsPolicy:
+    Type: AWS::IAM::RolePolicy
+    Condition: HasDocDbCredentialsKmsKey
+    Properties:
+      RoleName: !Ref FunctionRole
+      PolicyName: decrypt-docdb-credential
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: kms:Decrypt
+            Resource: !Ref DocDbCredentialsKmsKeyArn
+            Condition:
+              StringEquals:
+                "kms:ViaService": !Sub "secretsmanager.${AWS::Region}.amazonaws.com"
+
+  CredentialKmsPolicy:
+    Type: AWS::IAM::RolePolicy
+    Condition: HasCredentialsKmsKey
+    Properties:
+      RoleName: !Ref FunctionRole
+      PolicyName: decrypt-grafana-cloud-credential
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action: kms:Decrypt
+            Resource: !Ref CredentialsKmsKeyArn
+            Condition:
+              StringEquals:
+                "kms:ViaService": !Sub "secretsmanager.${AWS::Region}.amazonaws.com"
+
+  # --- Attribution store ------------------------------------------------------
+  AttributionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-attribution"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  # --- Network ----------------------------------------------------------------
+  FunctionSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub "${AWS::StackName}: docdb-connection-attribution function"
+      VpcId: !Ref VpcId
+      # No ingress: nothing initiates a connection to this function.
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Grafana Cloud, AWS APIs and the DocumentDB CA bundle
+        - !If
+          - HasDocDbSecurityGroup
+          - IpProtocol: tcp
+            FromPort: 27017
+            ToPort: 27017
+            DestinationSecurityGroupId: !Ref DocDbSecurityGroupId
+            Description: DocumentDB, via the cluster's own security group
+          - IpProtocol: tcp
+            FromPort: 27017
+            ToPort: 27017
+            CidrIp: !Ref VpcCidr
+            Description: DocumentDB
+
+  # Present only when the caller supplies the cluster's own security group id.
+  DocDbSecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Condition: HasDocDbSecurityGroup
+    Properties:
+      GroupId: !Ref DocDbSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 27017
+      ToPort: 27017
+      SourceSecurityGroupId: !GetAtt FunctionSecurityGroup.GroupId
+      Description: !Sub "${AWS::StackName}: allow the attribution function to open $currentOp"
+
+  # --- Function -------------------------------------------------------------
+  Function:
+    Type: AWS::Lambda::Function
+    DependsOn: [FunctionLogGroup]
+    Properties:
+      FunctionName: !Ref AWS::StackName
+      Description: >-
+        Attributes DocumentDB open connections to database users and exports a
+        gauge to Grafana Cloud over OTLP.
+      Role: !GetAtt FunctionRole.Arn
+      Runtime: !Ref LambdaRuntime
+      Handler: !Ref LambdaHandler
+      Architectures: [arm64]
+      MemorySize: !Ref MemorySize
+      Timeout: !Ref TimeoutSeconds
+      # Runs must not overlap: the checkpoint kept in DynamoDB is
+      # single-writer. Fixed rather than a parameter.
+      ReservedConcurrentExecutions: 1
+      VpcConfig:
+        SubnetIds: !Ref SubnetIds
+        SecurityGroupIds: [!GetAtt FunctionSecurityGroup.GroupId]
+      Code:
+        S3Bucket: !Ref LambdaCodeS3Bucket
+        S3Key: !Ref LambdaCodeS3Key
+        S3ObjectVersion: !If [HasCodeVersion, !Ref LambdaCodeS3ObjectVersion, !Ref AWS::NoValue]
+      Environment:
+        # No credential here. Environment variables are readable by anyone
+        # with lambda:GetFunctionConfiguration; the function fetches each
+        # token from Secrets Manager at cold start instead.
+        Variables:
+          DOCDB_CLUSTER_ID: !Ref DocDbClusterId
+          DOCDB_CREDENTIALS_SECRET_ID: !Ref DocDbCredentialsSecretId
+          AUDIT_LOG_GROUP: !If
+            - HasAuditLogGroupOverride
+            - !Ref AuditLogGroup
+            - !Sub "/aws/docdb/${DocDbClusterId}/audit"
+          AUDIT_BACKFILL_MINUTES: !Ref AuditBackfillMinutes
+          ATTRIBUTION_TABLE: !Ref AttributionTable
+          MAPPING_TTL_DAYS: !Ref MappingTtlDays
+          GRAFANA_CLOUD_OTLP_ENDPOINT: !Ref GrafanaCloudOtlpEndpoint
+          GRAFANA_CLOUD_CREDENTIALS_SECRET_ID: !Ref CredentialsSecretId
+          GRAFANA_CLOUD_TENANT_ID: !Ref GrafanaCloudTenantId
+          INCLUDE_CLIENT_ADDRESS: !Ref IncludeClientAddress
+          LOG_LEVEL: !Ref LogLevel
+
+  # --- Schedule ---------------------------------------------------------------
+  ScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: !Sub "Invoke ${AWS::StackName} on a schedule. Payload is ignored."
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Id: Function
+          Arn: !GetAtt Function.Arn
+
+  SchedulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Function
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduleRule.Arn
+
+  # --- Alarms -----------------------------------------------------------------
+  FunctionErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-errors"
+      AlarmDescription: !Sub "${AWS::StackName} returned an error. Check /aws/lambda/${AWS::StackName}."
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      # Lambda publishes no datapoint with no invocations, so the default would
+      # leave this in INSUFFICIENT_DATA forever between schedule ticks.
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Function
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+      OKActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+
+  # Reserved concurrency is 1, so a run that overlaps the next schedule tick is throttled
+  # rather than run twice. A steady stream of throttles means runs take longer than the
+  # schedule interval.
+  FunctionThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "${AWS::StackName}-throttles"
+      AlarmDescription: !Sub "${AWS::StackName} was throttled: runs are overlapping the schedule."
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref Function
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+      OKActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref "AWS::NoValue"]
+
+Outputs:
+  FunctionName:
+    Description: Name of the deployed function.
+    Value: !Ref Function
+
+  LogGroupName:
+    Description: Where the function's own logs go. Not where your data goes.
+    Value: !Ref FunctionLogGroup
+
+  AttributionTableName:
+    Description: DynamoDB table holding the client-address-to-user checkpoint and mappings.
+    Value: !Ref AttributionTable
+
+  FunctionSecurityGroupId:
+    Description: >-
+      Security group attached to the function. Add this as an allowed source
+      on the DocumentDB cluster's security group if DocDbSecurityGroupId was
+      left empty.
+    Value: !GetAtt FunctionSecurityGroup.GroupId

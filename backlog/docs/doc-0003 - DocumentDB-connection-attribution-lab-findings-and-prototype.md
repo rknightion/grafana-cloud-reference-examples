@@ -3,7 +3,7 @@ id: doc-0003
 title: 'DocumentDB connection attribution: lab findings and prototype'
 type: specification
 created_date: '2026-09-29 09:10'
-updated_date: '2026-09-29 09:14'
+updated_date: '2026-09-29 10:16'
 tags:
   - docdb
   - prototype
@@ -72,9 +72,19 @@ reasonable reading of the AWS and MongoDB docs would predict.
    `tlsAuthWithCACert` with the RDS CA bundle; TLS still negotiates. Setting `tlsAuth: true` also
    avoids it.
 
+9. **Snapshot gauges linger for the lookback unless the query bounds it.** Each run pushes one
+   OTLP snapshot and nothing marks a series stale when its connections close, so a plain
+   `docdb_connections_open` query kept showing a released 15-connection leak for about 5 minutes.
+   Wrapping every query in `last_over_time(...[2m])` (two schedule intervals) drops the series
+   within two runs; verified on the lab data.
+10. **The prototype now lives in the repo** at `examples/docdb-connection-attribution/prototype/`,
+    with sanitised screenshots in `screenshots/`. That copy is authoritative over the listings below
+    wherever they differ.
+
 ## Sample output
 
-One attributor run with two leaking apps, `app_leaky` (25 connections) and `app_nightly` (15):
+One attributor run with two leaking apps, `app_leaky` (25 connections) and `app_nightly` (15). The
+largest rows only, so they do not add up to the summary line:
 
 ```
   25 instance=docdb-lab-1 user=app_leaky app=leaky-batch addr=192.0.2.10
@@ -401,7 +411,8 @@ spec:
         "current": {
           "text": "grafanacloud-prom",
           "value": "grafanacloud-prom"
-        }
+        },
+        "hide": 2
       },
       {
         "name": "cluster",
@@ -415,7 +426,8 @@ spec:
         },
         "refresh": 2,
         "includeAll": true,
-        "multi": true
+        "multi": true,
+        "current": {}
       }
     ]
   },
@@ -436,7 +448,7 @@ spec:
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(docdb_connections_open{docdb_cluster=~\"$cluster\"})"
+          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))"
         }
       ]
     },
@@ -456,7 +468,7 @@ spec:
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_user=\"<unattributed>\"}) or vector(0)"
+          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_user=\"<unattributed>\"}[2m])) or vector(0)"
         }
       ]
     },
@@ -480,7 +492,7 @@ spec:
       "targets": [
         {
           "refId": "A",
-          "expr": "topk(10, sum by (docdb_user) (docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_user!=\"<unattributed>\"}))",
+          "expr": "topk(10, sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_user!=\"<unattributed>\"}[2m])))",
           "instant": true,
           "legendFormat": "{{docdb_user}}"
         }
@@ -513,7 +525,7 @@ spec:
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (docdb_user) (docdb_connections_open{docdb_cluster=~\"$cluster\"})",
+          "expr": "sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))",
           "legendFormat": "{{docdb_user}}"
         }
       ]
@@ -534,7 +546,7 @@ spec:
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (docdb_cluster, docdb_instance, docdb_user, docdb_app_name, client_address) (docdb_connections_open{docdb_cluster=~\"$cluster\"})",
+          "expr": "sum by (docdb_cluster, docdb_instance, docdb_user, docdb_app_name, client_address) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))",
           "instant": true,
           "format": "table"
         }
@@ -563,8 +575,47 @@ spec:
           }
         }
       ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Raw series: docdb_connections_open (every label, latest value)",
+      "gridPos": {
+        "x": 0,
+        "y": 23,
+        "w": 24,
+        "h": 10
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m])",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "__name__": true,
+              "job": true,
+              "service_name": true
+            },
+            "renameByName": {
+              "Value": "value"
+            }
+          }
+        }
+      ]
     }
-  ]
+  ],
+  "description": "Each attributor run pushes one snapshot. Queries use last_over_time(...[2m]) so a series disappears within two runs of its connections closing, instead of lingering for the 5-minute lookback."
 }
 ```
 

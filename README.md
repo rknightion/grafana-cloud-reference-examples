@@ -12,6 +12,7 @@ adapted, not a supported product.
 | Example | What it does | Runtime | Status |
 | --- | --- | --- | --- |
 | [`adobe-aem`](examples/adobe-aem) | Adobe Experience Manager Cloud Service logs from S3 to Loki. Parses all seven AEM log types and ships two dashboards | `python3.14` | alpha |
+| [`docdb-connection-attribution`](examples/docdb-connection-attribution) | Open Amazon DocumentDB connections attributed to the database user that opened them, as an OTLP gauge with a dashboard | `python3.14` | alpha |
 | [`generic-s3`](examples/generic-s3) | Arbitrary files landing in an S3 bucket to Loki. Text, JSON Lines, JSON arrays or CSV, optionally gzipped | `python3.14` | alpha |
 
 `just examples` prints this from the `example.yaml` manifests, which are the

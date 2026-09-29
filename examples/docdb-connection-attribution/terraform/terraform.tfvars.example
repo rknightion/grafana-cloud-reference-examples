@@ -1,0 +1,52 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is gitignored; only this
+# .example file is tracked.
+
+docdb_cluster_id = "my-docdb-cluster"
+
+# Private subnets with a route to a NAT gateway or the required VPC
+# interface/gateway endpoints (secretsmanager, logs, rds, dynamodb).
+subnet_ids = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
+
+# The DocumentDB cluster's own security group. When set, the stack adds an
+# ingress rule on it allowing tcp/27017 from the function's security group.
+docdb_security_group_id = "sg-0123456789abcdef0"
+
+# The secret must already exist. Credentials are never a Terraform input, so
+# they never land in state. Create it from a file rather than inline, so they
+# do not land in your shell history or in the process list:
+#
+#   umask 077 && cat > /tmp/docdb-attributor.json <<'JSON'
+#   {"username":"attributor","password":"..."}
+#   JSON
+#   aws secretsmanager create-secret --name docdb/attributor \
+#     --secret-string file:///tmp/docdb-attributor.json
+#   rm -f /tmp/docdb-attributor.json
+docdb_credentials_secret_id = "docdb/attributor"
+
+# Host, base URL or full push URL - all three are accepted for Loki-style
+# examples; this one takes the full OTLP endpoint.
+grafana_cloud_otlp_endpoint = "https://otlp-gateway-prod-eu-west-2.grafana.net/otlp"
+grafana_cloud_tenant_id     = "123456"
+
+# The secret must already exist. The token is never a Terraform input, so it
+# never lands in state. Create it from a file rather than inline, so the token
+# does not land in your shell history or in the process list:
+#
+#   umask 077 && cat > /tmp/gc-otlp.json <<'JSON'
+#   {"tenant_id":"123456","token":"glc_..."}
+#   JSON
+#   aws secretsmanager create-secret --name grafana-cloud/otlp \
+#     --secret-string file:///tmp/gc-otlp.json
+#   rm -f /tmp/gc-otlp.json
+credentials_secret_id = "grafana-cloud/otlp"
+
+# The function's own operational logs, not the data being shipped.
+log_level          = "INFO"
+log_retention_days = 30
+
+# Uncomment to notify somewhere when the function errors or throttles.
+# alarm_actions = ["arn:aws:sns:eu-west-1:123456789012:platform-alerts"]
+
+tags = {
+  Owner = "platform-team"
+}

@@ -23,7 +23,12 @@ bypass-selection = true
 # Every Python example is a member. `just new-example` appends to this list;
 # a glob is deliberately not used, because a Node or Go example has no
 # pyproject.toml and uv treats an unmatched member directory as an error.
-members = ["common/python", "examples/adobe-aem", "examples/generic-s3"]
+members = [
+  "common/python",
+  "examples/adobe-aem",
+  "examples/docdb-connection-attribution",
+  "examples/generic-s3",
+]
 
 [tool.uv.sources]
 grafana-cloud-common = { workspace = true }
@@ -102,7 +107,12 @@ disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 minversion = "8.0"
-testpaths = ["common/python/tests", "examples/generic-s3/tests", "tools/tests"]
+testpaths = [
+  "common/python/tests",
+  "examples/docdb-connection-attribution/tests",
+  "examples/generic-s3/tests",
+  "tools/tests",
+]
 addopts = "-ra --strict-markers --strict-config"
 filterwarnings = ["error"]
 
