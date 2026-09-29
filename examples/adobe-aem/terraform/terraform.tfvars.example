@@ -69,6 +69,7 @@ drop_client_ip = false
 
 # The function's own operational logs, not the AEM logs being shipped.
 log_level          = "INFO"
+log_debug_sample_rate = 0
 log_retention_days = 30
 
 # Uncomment before a first run against a bucket with an existing backlog of AEM

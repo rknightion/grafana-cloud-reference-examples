@@ -32,6 +32,7 @@ from grafana_cloud_common import (
     StreamBatcher,
     configure,
     get_logger,
+    sample_debug,
 )
 from grafana_cloud_common.aws import (
     CredentialProvider,
@@ -341,6 +342,7 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext | None = None) 
     ["ReportBatchItemFailures"]`. Both IaC paths set it; without it Lambda
     redelivers the whole batch and duplicates every line already shipped.
     """
+    sample_debug()
     outcome = process_messages(parse_event(event), handle_object, context=context)
     _LOG.info(
         "invocation complete",

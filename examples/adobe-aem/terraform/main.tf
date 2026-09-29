@@ -48,7 +48,8 @@ locals {
       LOKI_BATCH_MAX_LINES = tostring(var.batch_max_lines)
       LOKI_BATCH_MAX_BYTES = tostring(var.batch_max_bytes)
 
-      LOG_LEVEL = var.log_level
+      LOG_LEVEL             = var.log_level
+      LOG_DEBUG_SAMPLE_RATE = tostring(var.log_debug_sample_rate)
     },
     var.extra_environment_variables,
   )

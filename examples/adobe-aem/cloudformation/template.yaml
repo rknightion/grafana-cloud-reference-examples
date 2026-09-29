@@ -63,7 +63,7 @@ Metadata:
           - BatchMaxLines
           - BatchMaxBytes
       - Label: { default: Observability }
-        Parameters: [LogLevel, LogRetentionInDays, AlarmTopicArn]
+        Parameters: [LogLevel, LogDebugSampleRate, LogRetentionInDays, AlarmTopicArn]
 
 Parameters:
   # --- Source ---------------------------------------------------------------
@@ -386,6 +386,16 @@ Parameters:
     AllowedValues: [DEBUG, INFO, WARNING, ERROR]
     Description: The function's own logging, not the data being shipped. DEBUG costs CloudWatch ingest.
 
+  LogDebugSampleRate:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 1
+    Description: >-
+      Fraction of invocations, 0 to 1, that log at DEBUG regardless of LogLevel.
+      0.05 gives a steady trickle of DEBUG detail without paying CloudWatch
+      ingest for DEBUG on every invocation.
+
   LogRetentionInDays:
     Type: Number
     Default: 30
@@ -660,6 +670,7 @@ Resources:
           LOKI_BATCH_MAX_LINES: !Ref BatchMaxLines
           LOKI_BATCH_MAX_BYTES: !Ref BatchMaxBytes
           LOG_LEVEL: !Ref LogLevel
+          LOG_DEBUG_SAMPLE_RATE: !Ref LogDebugSampleRate
 
   EventSourceMapping:
     Type: AWS::Lambda::EventSourceMapping

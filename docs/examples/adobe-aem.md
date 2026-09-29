@@ -189,6 +189,7 @@ CloudFormation parameter.
 | `MAX_TIMESTAMP_AGE_SECONDS` | `0` (off) | Stamp older lines at ingestion time. Set before a replay |
 | `LOKI_STATIC_LABELS` | `{}` | JSON object of extra labels. Low cardinality only |
 | `LOG_LEVEL` | `INFO` | The function's own logging, not the data being shipped |
+| `LOG_DEBUG_SAMPLE_RATE` | `0` | Fraction of invocations, 0 to 1, that log at DEBUG whatever `LOG_LEVEL` says. `0.05` gives DEBUG detail to diagnose with while paying for it on one invocation in twenty. |
 
 ### Labels, and what deliberately is not one
 

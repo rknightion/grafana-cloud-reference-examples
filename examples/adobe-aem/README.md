@@ -261,6 +261,7 @@ Terraform variable and CloudFormation parameter. Prefer changing it there.
 | `LOKI_BATCH_MAX_LINES` | `5000` | Lines per Loki push |
 | `LOKI_BATCH_MAX_BYTES` | `4194304` | Approximate bytes per Loki push |
 | `LOG_LEVEL` | `INFO` | The function's own logging, not the data being shipped |
+| `LOG_DEBUG_SAMPLE_RATE` | `0` | Fraction of invocations, 0 to 1, that log at DEBUG whatever `LOG_LEVEL` says. `0.05` gives DEBUG detail to diagnose with while paying for it on one invocation in twenty. |
 
 Leave `SOURCE_KEY_SUFFIX` empty unless the bucket holds more than AEM logs:
 Adobe gzips some log types and not others, so any single suffix silently excludes
@@ -465,9 +466,11 @@ re-deploy; data already in Loki keeps the labels it was written with.
 `timeout_seconds` towards the 900 s Lambda maximum, and `memory_mb` with it,
 since memory buys CPU.
 
-**Objects processed twice.** Expected after a retry, and harmless: Loki
-deduplicates entries identical in timestamp, labels and line content within a
-stream.
+**Objects processed twice.** Expected after a retry: delivery is at-least-once.
+AEM lines carry their own timestamp, so a redelivered line is identical and Loki
+usually collapses it. Lines with no timestamp, or restamped at ingestion time by
+`MAX_TIMESTAMP_AGE_SECONDS`, get a new timestamp and both copies are kept. See
+[Pushing to Loki](https://github.com/rknightion/grafana-cloud-reference-examples/blob/main/docs/loki-ingestion.md#delivery-is-at-least-once).
 
 **Something is in the dead-letter queue.** The message carries the original S3
 notification, so redriving it after a fix reprocesses exactly what failed:
