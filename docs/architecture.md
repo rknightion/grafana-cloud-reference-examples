@@ -58,7 +58,7 @@ not diverge on a finite log retention, a DLQ, `ReportBatchItemFailures`, a close
 runtime allowlist with a GA default, a preview-runtime gate, wildcard-free IAM, or
 credential handling.
 
-See [`common/cloudformation/README.md`](../common/cloudformation/README.md).
+See [`common/cloudformation/README.md`](https://github.com/rknightion/grafana-cloud-reference-examples/blob/main/common/cloudformation/README.md).
 
 ## 4. One value per fact, checked
 

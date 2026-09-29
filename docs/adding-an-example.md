@@ -75,8 +75,8 @@ Lead with the answer, not the reasoning. The customer wants to know what this
 is, whether it fits, and how to deploy it; the design argument is for the
 engineer who comes back later.
 
-[`generic-s3`](../examples/generic-s3) and
-[`adobe-aem`](../examples/adobe-aem) are the worked versions.
+[`generic-s3`](examples/generic-s3.md) and
+[`adobe-aem`](examples/adobe-aem.md) are the worked versions.
 
 ## Reuse, do not fork
 

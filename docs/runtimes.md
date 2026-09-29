@@ -86,7 +86,7 @@ table, see no Go entry, and conclude Lambda dropped Go. It did not.
 
 Go and Rust run on `provided.al2023`, the OS-only runtime, via the runtime
 interface (`aws-lambda-go`, or `lambda_runtime` for Rust). The handler binary is
-named `bootstrap`. See [`common/go/README.md`](../common/go/README.md).
+named `bootstrap`. See [`common/go/README.md`](https://github.com/rknightion/grafana-cloud-reference-examples/blob/main/common/go/README.md).
 
 ## When a deprecation notice arrives
 

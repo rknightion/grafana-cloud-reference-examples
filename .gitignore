@@ -226,6 +226,19 @@ __marimo__/
 # Planning artefacts are scratch, never deliverables.
 docs/superpowers/
 
+# Injected by the docs hub (m7kni-net-site) at build time - never commit these.
+# The hub copies its own SEO template, brand stylesheet and fonts into a clone
+# and generates zensical.toml from docs.toml. A tracked copy here is drift, and
+# is exactly what the manifest model exists to prevent.
+/zensical.toml
+docs/overrides/
+docs/stylesheets/brand.css
+docs/stylesheets/consent-bar.css
+docs/javascripts/consent-bar.js
+docs/fonts/
+docs/assets/project-icon*.svg
+docs/assets/social-card.*
+
 # Build output: packaged example zips and staged trees.
 /dist/
 /build/

@@ -1,0 +1,47 @@
+name: Trigger Documentation Sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+      - 'docs.toml'
+  workflow_dispatch:
+
+concurrency:
+  group: docs-sync-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  trigger-sync:
+    permissions:
+      contents: read
+      id-token: write # exchanged for a tailnet identity and an OpenBao token
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    steps:
+      # Mints a GitHub App installation token carrying contents:write on the docs
+      # hub ONLY. Nothing durable is stored in this repo.
+      # contents:write really is what the dispatch endpoint wants -- actions:write
+      # is the intuitive wrong answer.
+      #
+      # Docs sync depends on camden being up, unsealed and on the tailnet. The
+      # hub's daily rebuild cron is the backstop if this fails.
+      - name: Mint a scoped docs-sync token
+        id: bao
+        uses: rknightion/.github/.github/actions/broker-token@bc58399e49a8d8131a379f530fffe8c9659667f9
+        with:
+          permission-set: docs-sync
+          # One shared permission set, but a role per repo to pin repository_id.
+          role: docs-sync-grafana-cloud-reference-examples
+          tailscale-client-id: ${{ secrets.TS_WIF_CLIENT_ID }}
+          tailscale-audience: ${{ secrets.TS_WIF_AUDIENCE }}
+
+      - name: Trigger documentation sync in parent repo
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
+        with:
+          token: ${{ steps.bao.outputs.token }}
+          repository: m7kni/m7kni-net-site
+          event-type: docs-update
+          client-payload: '{"repository": "grafana-cloud-reference-examples"}'
