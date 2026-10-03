@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   release-please:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write # create the release commit, tag and GitHub Release
@@ -60,7 +60,7 @@ jobs:
   attach-bundles:
     needs: release-please
     if: needs.release-please.outputs.releases_created == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write # upload release assets
