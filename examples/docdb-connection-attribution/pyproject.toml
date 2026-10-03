@@ -1,6 +1,6 @@
 [project]
 name = "grafana-cloud-example-docdb-connection-attribution"
-version = "0.2.0"
+version = "0.3.0"
 description = "Attribute open Amazon DocumentDB connections to database users, as OTLP metrics"
 readme = "README.md"
 requires-python = ">=3.14"
