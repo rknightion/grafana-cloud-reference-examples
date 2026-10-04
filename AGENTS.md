@@ -6,9 +6,7 @@ as one zip and deploy. Nothing here is a product, and nothing here is deployed b
 
 ## Task interface
 
-`just check` is the gate. Run it before every commit. `just --list` shows the rest.
-
-There is no `Makefile` and no `scripts/*.sh` task runner. Do not add one.
+`just check` is the gate. No `Makefile`.
 
 ## Layout contract
 
@@ -141,8 +139,7 @@ while reporting success is worse than no scan. Extend the pattern set when a new
 a missing identifier means the gate quietly passes.
 
 Splitting a term across string literals is **not** a substitute for this. It defeats `grep`, not a
-reader, and a public repository is read. An earlier version of this script hardcoded three
-identifiers that way and had to be rewritten out of history.
+reader, and a public repository is read.
 
 Only generic patterns are hardcoded: credential shapes, private IPv4 endpoints, absolute home paths,
 forbidden filenames and binary extensions. Publishing those discloses nothing.
@@ -183,10 +180,8 @@ A change to `common/` fans out as a minor bump on every consuming example.
 
 ## Local conventions
 
-- Commit straight to `main` and push. Human changes do not go through a PR.
-  release-please is the one exception: it opens a release PR per component, and
-  merging that PR is what creates the tag. Do not hand-edit or hand-tag a
-  release.
+- release-please opens a release PR per component; merging it creates the tag. Do not hand-edit or
+  hand-tag a release.
 - Python 3.14 locally, matching the default runtime. Node 24.
 - `uv` and `npm ci` only. No `pip install` into the workspace.
 
@@ -207,10 +202,5 @@ Tasks are `GRE-NNNN` in `backlog/`. Read the **Agent fan-out protocol (canonical
 designing a wave, and the **Wave operating model** doc for this repo's own rules; the operating model
 wins on anything about this repo. `backlog doc list --plain` shows both.
 
-Tracker traps:
-
-- **Never `--notes`, `--plan` or `--final-summary` bare.** They silently replace the whole section
-  and exit 0. Use the `--append-*` forms.
-- **Finalize in one call**: `backlog task edit <id> --check-ac 1 --check-ac 2 -s Done`.
-- `backlog/` is committed and public: no credential, stack/org/tenant ID, email, public IP or
-  internal hostname in a task or doc.
+`backlog/` is committed and public: no credential, stack/org/tenant ID, email, public IP or
+internal hostname in a task or doc.
