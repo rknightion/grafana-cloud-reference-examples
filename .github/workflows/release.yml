@@ -43,7 +43,7 @@ jobs:
       # "action_required".
       - name: Mint a scoped release token
         id: bao
-        uses: rknightion/.github/.github/actions/broker-token@f32275a4a7641f34db5cb005d270db961b54a680 # v1.25.3
+        uses: rknightion/.github/.github/actions/broker-token@c36bf7ded21407b0a5169ecb2502d6a3a385be30 # v1.25.5
         with:
           permission-set: release-please-grafana-cloud-reference-examples
           tailscale-client-id: ${{ secrets.TS_WIF_CLIENT_ID }}
@@ -95,7 +95,7 @@ jobs:
 
       - name: Install just
         if: steps.scope.outputs.example != ''
-        uses: rknightion/.github/.github/actions/setup-just@f32275a4a7641f34db5cb005d270db961b54a680 # v1.25.3
+        uses: rknightion/.github/.github/actions/setup-just@c36bf7ded21407b0a5169ecb2502d6a3a385be30 # v1.25.5
 
       - name: Install uv
         if: steps.scope.outputs.example != ''
