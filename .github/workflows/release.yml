@@ -107,10 +107,14 @@ jobs:
           # Only release-please's own branches in this repo. The label alone is
           # not enough: anyone with triage access could put it on another PR.
           # A draft is a human hold, and arming one errors, so drafts are skipped.
-          gh pr list --repo "${REPO}" --state open --label "autorelease: pending" \
+          prs="$(gh pr list --repo "${REPO}" --state open --label "autorelease: pending" \
               --json number,title,body,headRefName,isCrossRepository,isDraft,autoMergeRequest \
-              --jq '.[] | select(.headRefName | startswith("release-please--")) | select(.isCrossRepository | not) | select(.isDraft | not)' \
-            | while IFS= read -r pr; do
+              --jq '.[] | select(.headRefName | startswith("release-please--")) | select(.isCrossRepository | not) | select(.isDraft | not)')"
+
+          # One PR failing must not leave the rest unhandled: carry on, fail at the end.
+          failed=0
+          while IFS= read -r pr; do
+            [ -n "${pr}" ] || continue
             number="$(jq -r .number <<<"${pr}")"
             title="$(jq -r .title <<<"${pr}")"
 
@@ -145,9 +149,26 @@ jobs:
             else
               echo "#${number} ${title}: arming auto-merge (${current} -> ${next})"
               gh pr edit "${number}" --repo "${REPO}" --remove-label "${MANUAL_LABEL}" 2>/dev/null || true
-              gh pr merge "${number}" --repo "${REPO}" --auto --squash
+              # GitHub refuses to arm a PR that is already mergeable ("is in
+              # clean status"), and gh's own fallback loses the race once an
+              # earlier merge in this loop moves main. Merge it directly then:
+              # the ruleset still requires ci-success, and the App is not a
+              # bypass actor, so this cannot skip the tests.
+              if ! out="$(gh pr merge "${number}" --repo "${REPO}" --auto --squash 2>&1)"; then
+                echo "${out}"
+                if grep -q 'is in clean status' <<<"${out}"; then
+                  echo "#${number}: already mergeable, merging directly"
+                  gh pr merge "${number}" --repo "${REPO}" --squash || failed=1
+                else
+                  failed=1
+                fi
+                [ "${failed}" = 0 ] || echo "::error::#${number} ${title}: neither armed nor merged"
+              else
+                echo "${out}"
+              fi
             fi
-          done
+          done <<<"${prs}"
+          exit "${failed}"
 
   # One job per released path, so an example's bundle lands on its own release.
   attach-bundles:
