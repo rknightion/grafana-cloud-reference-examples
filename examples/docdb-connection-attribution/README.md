@@ -9,7 +9,9 @@ driver's app name. That is exactly the connection you care about when something 
 
 This example closes the gap. The DocumentDB audit log records an `authenticate` event with the
 client `ip:port` and the user for every new connection. A scheduled Lambda joins the two and
-exports a gauge per database user and app to Grafana Cloud over OTLP, with a dashboard.
+exports a gauge per database user, app and connection state (active or idle) to Grafana Cloud over
+OTLP, plus each user's granted roles, with a dashboard that breaks open connections down by user
+and by role.
 
 ![Dashboard](https://github.com/rknightion/grafana-cloud-reference-examples/raw/main/examples/docdb-connection-attribution/screenshots/01-dashboard-full.png)
 
@@ -60,6 +62,23 @@ deliberate connection leak, and the screenshots in this README.
      roles: [{ role: "clusterMonitor", db: "admin" }, { role: "read", db: "admin" }],
    })
    ```
+
+   **Optional, for the by-role views:** reading other users' roles needs the `viewUser` action,
+   which neither built-in role grants. A custom role carrying only that action is enough, and
+   cannot change any user:
+
+   ```js
+   const admin = db.getSiblingDB("admin")
+   admin.createRole({
+     role: "viewUsersOnly",
+     privileges: [{ resource: { db: "admin", collection: "" }, actions: ["viewUser"] }],
+     roles: [],
+   })
+   admin.grantRolesToUser("grafana_attributor", [{ role: "viewUsersOnly", db: "admin" }])
+   ```
+
+   Without it everything else still works: the function logs one warning per run, exports no
+   `docdb_user_role` series, and the dashboard's role section stays hidden.
 
 3. **A Secrets Manager secret holding that user**, as JSON in the same shape DocumentDB's own
    managed secrets use. Pass it as a file so the password stays out of your shell history:
@@ -168,7 +187,8 @@ aws cloudformation deploy \
    output) here and its `LogGroupName` output in the next step.
 
    A healthy run returns a summary such as
-   `{"connections": 62, "unattributed": 8, "series": 14, "audit_events": 221, "audit_complete": true, "failed_instances": []}`.
+   `{"connections": 62, "active": 5, "unattributed": 8, "role_grants": 17, "series": 14, "audit_events": 221, "audit_complete": true, "failed_instances": []}`.
+   `role_grants` is `0` when the function's user cannot read roles.
    The first run reads up to a week of audit history, so `audit_events` is large once and small
    after that.
 
@@ -199,8 +219,9 @@ aws cloudformation deploy \
    few. `false` means the audit read is still working through a backlog; it resumes where it
    stopped on the next run.
 
-To see a leak on a test cluster, `dev/loadgen.py load 600` runs two ordinary apps plus one that
-opens 25 connections per instance and never closes them.
+To see a leak on a test cluster, `dev/loadgen.py load 600` runs two ordinary apps, a slow report
+that keeps a few connections active, and one app that opens 25 connections per instance and never
+closes them.
 
 ## Configuration
 
@@ -226,8 +247,17 @@ The schedule is `rate(1 minute)` by default (`schedule_expression` / `ScheduleEx
 
 | Metric (in Mimir) | Labels |
 | --- | --- |
-| `docdb_connections_open` | `docdb_cluster`, `docdb_instance`, `docdb_user`, `docdb_app_name`, optionally `client_address` |
+| `docdb_connections_open` | `docdb_cluster`, `docdb_instance`, `docdb_user`, `docdb_app_name`, `docdb_connection_state`, optionally `client_address` |
+| `docdb_user_role` | `docdb_cluster`, `docdb_user`, `docdb_role`, `docdb_role_db`; value always `1` |
 | `docdb_attributor_audit_events` | `docdb_cluster` |
+
+`docdb_connection_state` is `active` when an operation was running on the connection at the moment
+of the snapshot, and `idle` otherwise. It comes straight from `$currentOp`'s `active` field.
+
+`docdb_user_role` is an info metric: one series per role granted to each user, joined to the
+connection counts on `docdb_cluster` and `docdb_user`. Roles belong to the user, not the
+connection, so putting them on `docdb_connections_open` would multiply its series by each user's
+role count and double-count any user with more than one role.
 
 `docdb_user` is `<unattributed>` when no user could be found; see Limitations. An empty
 `docdb_app_name` means the driver sent no app name, and the label is then absent rather than
@@ -242,6 +272,51 @@ Each run pushes one snapshot, and nothing marks a series stale when its last con
 **Query with `last_over_time(...[2m])`, a window of at least two schedule intervals**, or a closed
 connection keeps showing for the 5-minute Prometheus lookback. The shipped dashboard does this.
 
+### PromQL: active, idle and total by user and role
+
+By user:
+
+```promql
+# total open connections per user
+sum by (docdb_user) (last_over_time(docdb_connections_open[2m]))
+
+# active, or idle, per user
+sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_connection_state="active"}[2m]))
+sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_connection_state="idle"}[2m]))
+
+# both states as separate series, for one stacked panel
+sum by (docdb_user, docdb_connection_state) (last_over_time(docdb_connections_open[2m]))
+```
+
+By role, joining the role info metric to the per-user counts. Drop the
+`docdb_connection_state` matcher for the total:
+
+```promql
+sum by (docdb_role, docdb_role_db) (
+  last_over_time(docdb_user_role[2m])
+  * on (docdb_cluster, docdb_user) group_left ()
+  sum by (docdb_cluster, docdb_user) (
+    last_over_time(docdb_connections_open{docdb_connection_state="active"}[2m])
+  )
+)
+```
+
+Two things to know about the role queries:
+
+- **Filter to one state per query.** Keeping `docdb_connection_state` in the inner `sum by` leaves
+  several series per user on both sides of the join, and Prometheus rejects it as many-to-many.
+  Run one query per state, as the dashboard does.
+- **A user with several roles counts once under each.** The per-role numbers do not add up to the
+  total open connections, and `<unattributed>` connections have no user and so no role.
+
+The dashboard groups these into sections: an overview (open, active, idle, unattributed), active
+and idle by user, by role, and a detail table with every label. The by-role section hides itself
+when there is no `docdb_user_role` data.
+
+![Active and idle connections by user](https://github.com/rknightion/grafana-cloud-reference-examples/raw/main/examples/docdb-connection-attribution/screenshots/05-active-idle-by-user.png)
+
+![Connections by role](https://github.com/rknightion/grafana-cloud-reference-examples/raw/main/examples/docdb-connection-attribution/screenshots/06-by-role.png)
+
 ## What it costs
 
 - **Lambda:** 1,440 runs a day at 256 MB and typically 1 to 8 seconds each. A few cents a day.
@@ -252,14 +327,19 @@ connection keeps showing for the 5-minute Prometheus lookback. The shipped dashb
 - **CloudWatch Logs `FilterLogEvents`:** one short read of new events per run.
 - **DynamoDB on demand:** one write per new client socket, one batch read per run, and one
   TTL-refresh write per long-lived connection each time its mapping passes half its TTL.
-- **Grafana Cloud:** one active series per (instance, user, app), plus the client host when
-  enabled. Tens of series for a typical cluster.
+- **Grafana Cloud:** one active series per (instance, user, app, state), so at most twice the
+  per-(instance, user, app) count, plus the client host when enabled. Add one `docdb_user_role`
+  series per role grant on the cluster. Tens of series for a typical cluster.
 - **NAT gateway** data processing, if the function's egress goes through one.
 
 ## Troubleshooting
 
 **The run fails with `Authorization failure` (code 13).** The DocumentDB user has `clusterMonitor`
 but not `read` on `admin`. Grant both; see step 2 of the prerequisites.
+
+**The by-role section is missing and the log says `user roles skipped`.** The function's user
+lacks the `viewUser` action. Grant the `viewUsersOnly` custom role from step 2 of the
+prerequisites; the next run exports the role series.
 
 **Every connection is `<unattributed>`.** No authenticate events are reaching the function. Check
 that the log group exists and has recent events:
@@ -302,6 +382,12 @@ anything else in the account that uses it.
   and an active connection's own user always wins over the audit match. Only idle connections on a
   reused port in the gap before the new event arrives can be wrong.
 - **Attribution lags new connections by the audit delivery delay**, usually under a minute.
+- **Active is a once-a-minute sample, not a usage count.** A connection counts as active only if
+  an operation is running on it at the instant of the snapshot. A pool that serves a thousand
+  short queries a minute can still read as mostly idle. Use active for long-running work and for
+  "is this pool doing anything at all", and the idle count for leaks.
+- **The function's own connection always reads as active**, under its own user and app name
+  `docdb-connection-attribution`, one per instance: it is the connection running `$currentOp`.
 - **The dashboard can only show what `$currentOp` reports.** It lists client connections to
   DocumentDB; it does not show connections held open by a proxy on your side.
 - **Grafana's MongoDB Enterprise data source cannot replace this function.** It only accepts `find`
@@ -330,7 +416,9 @@ Each run does three things.
    add an authenticate event of its own every minute.
 3. **Joins and exports.** Each connection's `client` is looked up in the table. An active
    connection's own `effectiveUsers` wins, because it is current; an idle one takes the audit
-   match. The counts go out as an OTLP gauge. Every attribute a dashboard filters on is a data
+   match. Each connection is counted as active or idle from `$currentOp`'s own `active` field. The
+   user list (`usersInfo`) is read once per run from the first reachable instance, since users
+   and roles are cluster-wide. The counts and role grants go out as OTLP gauges. Every attribute a dashboard filters on is a data
    point attribute, because the OTLP gateway puts resource attributes on `target_info` rather than
    on each series. The exporter's `service.instance.id` is fixed per cluster: recent OTel SDKs
    otherwise generate a random one per process, the gateway turns it into an `instance` label, and

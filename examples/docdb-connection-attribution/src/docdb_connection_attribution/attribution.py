@@ -10,13 +10,22 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any, NamedTuple
 
 UNATTRIBUTED = "<unattributed>"
+ACTIVE = "active"
+IDLE = "idle"
 
 
 class SeriesKey(NamedTuple):
     instance: str
     user: str
     app: str
+    state: str
     client_address: str | None
+
+
+class UserRole(NamedTuple):
+    user: str
+    role: str
+    db: str
 
 
 def attribute(conn: Mapping[str, Any], audited_user: str | None) -> str:
@@ -35,6 +44,25 @@ def attribute(conn: Mapping[str, Any], audited_user: str | None) -> str:
     return audited_user or UNATTRIBUTED
 
 
+def connection_state(conn: Mapping[str, Any]) -> str:
+    """active while an operation is running on the connection at the moment of the snapshot."""
+    return ACTIVE if conn.get("active") is True else IDLE
+
+
+def user_roles(users: Iterable[Mapping[str, Any]]) -> list[UserRole]:
+    """Flatten usersInfo output to one (user, role, role db) row per granted role."""
+    out: list[UserRole] = []
+    for u in users:
+        name = u.get("user")
+        roles = u.get("roles")
+        if not name or not isinstance(roles, list):
+            continue
+        for r in roles:
+            if isinstance(r, Mapping) and r.get("role"):
+                out.append(UserRole(str(name), str(r["role"]), str(r.get("db") or "")))
+    return out
+
+
 def client_host(client: str) -> str:
     """ip:port -> ip. IPv6 clients arrive as [addr]:port."""
     host = client.rsplit(":", 1)[0] if ":" in client else client
@@ -48,13 +76,19 @@ def group_connections(
     *,
     include_client_address: bool,
 ) -> Counter[SeriesKey]:
-    """Count one instance's open connections by user, app and optionally client host."""
+    """Count one instance's open connections by user, app, state and optionally client host."""
     counts: Counter[SeriesKey] = Counter()
     for conn in connections:
         client = str(conn.get("client") or "")
         user = attribute(conn, lookup(client) if client else None)
         app = str(conn.get("app") or "")
         counts[
-            SeriesKey(instance, user, app, client_host(client) if include_client_address else None)
+            SeriesKey(
+                instance,
+                user,
+                app,
+                connection_state(conn),
+                client_host(client) if include_client_address else None,
+            )
         ] += 1
     return counts

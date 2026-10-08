@@ -35,18 +35,49 @@
         "multi": true,
         "current": {},
         "label": "Cluster"
+      },
+      {
+        "name": "role_data",
+        "type": "query",
+        "hide": 2,
+        "datasource": {
+          "uid": "${datasource}"
+        },
+        "label": "Role data present",
+        "description": "Holds docdb_user_role when the function can read roles (the viewUser action). Empty otherwise, which hides the role section.",
+        "query": {
+          "query": "label_values(docdb_user_role{docdb_cluster=~\"$cluster\"}, __name__)",
+          "refId": "r"
+        },
+        "refresh": 2,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
       }
     ]
   },
   "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Overview",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
     {
       "id": 1,
       "type": "stat",
       "title": "Open connections",
       "gridPos": {
         "x": 0,
-        "y": 0,
-        "w": 6,
+        "y": 1,
+        "w": 4,
         "h": 5
       },
       "datasource": {
@@ -55,18 +86,62 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))"
+          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m])) or vector(0)",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Active",
+      "gridPos": {
+        "x": 4,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"active\"}[2m])) or vector(0)",
+          "instant": true
+        }
+      ],
+      "description": "active means an operation was running on the connection at the moment of the snapshot (once a minute), so it is a sample, not a count of every connection used in the minute."
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Idle",
+      "gridPos": {
+        "x": 8,
+        "y": 1,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"idle\"}[2m])) or vector(0)",
+          "instant": true
         }
       ]
     },
     {
       "id": 2,
       "type": "stat",
-      "title": "Unattributed (driver heartbeats, or opened before audit lookback)",
+      "title": "Unattributed",
       "gridPos": {
-        "x": 6,
-        "y": 0,
-        "w": 6,
+        "x": 12,
+        "y": 1,
+        "w": 4,
         "h": 5
       },
       "datasource": {
@@ -77,16 +152,17 @@
           "refId": "A",
           "expr": "sum(last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_user=\"<unattributed>\"}[2m])) or vector(0)"
         }
-      ]
+      ],
+      "description": "Idle connections with no audit match: mostly drivers' unauthenticated monitoring connections, or connections opened before the audit lookback."
     },
     {
       "id": 3,
       "type": "bargauge",
       "title": "Top users by open connections",
       "gridPos": {
-        "x": 12,
-        "y": 0,
-        "w": 12,
+        "x": 16,
+        "y": 1,
+        "w": 8,
         "h": 5
       },
       "datasource": {
@@ -106,13 +182,93 @@
       ]
     },
     {
-      "id": 4,
-      "type": "timeseries",
-      "title": "Open connections by user",
+      "id": 101,
+      "type": "row",
+      "title": "Active and idle connections by user",
+      "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 5,
+        "y": 6,
         "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Active connections by user",
+      "gridPos": {
+        "x": 0,
+        "y": 7,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"active\"}[2m]))",
+          "legendFormat": "{{docdb_user}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30,
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "description": "active means an operation was running on the connection at the moment of the snapshot (once a minute), so it is a sample, not a count of every connection used in the minute."
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Idle connections by user",
+      "gridPos": {
+        "x": 12,
+        "y": 7,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"idle\"}[2m]))",
+          "legendFormat": "{{docdb_user}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30,
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Open connections by user (total)",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
         "h": 9
       },
       "datasource": {
@@ -138,12 +294,228 @@
       ]
     },
     {
-      "id": 5,
+      "id": 13,
       "type": "table",
-      "title": "Connections by user, app, client and instance (latest snapshot)",
+      "title": "Connections by user: active, idle, total",
+      "description": "Latest snapshot. active means an operation was running on the connection at the moment of the snapshot (once a minute), so it is a sample, not a count of every connection used in the minute.",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"active\"}[2m]))",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"idle\"}[2m]))",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "docdb_user": 0,
+              "Value #A": 1,
+              "Value #B": 2,
+              "Value #C": 3
+            },
+            "renameByName": {
+              "Value #A": "active",
+              "Value #B": "idle",
+              "Value #C": "total"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "total",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 102,
+      "type": "row",
+      "title": "Connections by role",
+      "collapsed": false,
       "gridPos": {
         "x": 0,
-        "y": 14,
+        "y": 25,
+        "w": 24,
+        "h": 1
+      },
+      "panels": [],
+      "repeat": "role_data"
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Open connections by role",
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (docdb_role, docdb_role_db) (\n  last_over_time(docdb_user_role{docdb_cluster=~\"$cluster\"}[2m])\n  * on (docdb_cluster, docdb_user) group_left ()\n  sum by (docdb_cluster, docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))\n)",
+          "legendFormat": "{{docdb_role}}@{{docdb_role_db}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "stacking": {
+              "mode": "normal"
+            },
+            "fillOpacity": 30,
+            "lineInterpolation": "stepAfter"
+          }
+        },
+        "overrides": []
+      },
+      "description": "Joins docdb_connections_open to docdb_user_role on user. A user with several roles counts once under each, so roles do not add up to the total. Unattributed connections have no user and so no role."
+    },
+    {
+      "id": 14,
+      "type": "table",
+      "title": "Connections by role: active, idle, total",
+      "description": "Latest snapshot. A user with several roles counts once under each role. Needs the viewUser action on the function's DocumentDB user; without it this table is empty.",
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "uid": "${datasource}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (docdb_role, docdb_role_db) (\n  last_over_time(docdb_user_role{docdb_cluster=~\"$cluster\"}[2m])\n  * on (docdb_cluster, docdb_user) group_left ()\n  sum by (docdb_cluster, docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"active\"}[2m]))\n)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "expr": "sum by (docdb_role, docdb_role_db) (\n  last_over_time(docdb_user_role{docdb_cluster=~\"$cluster\"}[2m])\n  * on (docdb_cluster, docdb_user) group_left ()\n  sum by (docdb_cluster, docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\",docdb_connection_state=\"idle\"}[2m]))\n)",
+          "instant": true,
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "expr": "sum by (docdb_role, docdb_role_db) (\n  last_over_time(docdb_user_role{docdb_cluster=~\"$cluster\"}[2m])\n  * on (docdb_cluster, docdb_user) group_left ()\n  sum by (docdb_cluster, docdb_user) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))\n)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "docdb_role": 0,
+              "docdb_role_db": 1,
+              "Value #A": 2,
+              "Value #B": 3,
+              "Value #C": 4
+            },
+            "renameByName": {
+              "Value #A": "active",
+              "Value #B": "idle",
+              "Value #C": "total"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "field": "total",
+                "desc": true
+              }
+            ]
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "0"
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 103,
+      "type": "row",
+      "title": "Detail",
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 35,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
+      "id": 5,
+      "type": "table",
+      "title": "Connections by user, app, state, client and instance (latest snapshot)",
+      "gridPos": {
+        "x": 0,
+        "y": 36,
         "w": 24,
         "h": 9
       },
@@ -153,7 +525,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (docdb_cluster, docdb_instance, docdb_user, docdb_app_name, client_address) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))",
+          "expr": "sum by (docdb_cluster, docdb_instance, docdb_user, docdb_app_name, docdb_connection_state, client_address) (last_over_time(docdb_connections_open{docdb_cluster=~\"$cluster\"}[2m]))",
           "instant": true,
           "format": "table"
         }
@@ -194,7 +566,7 @@
       "title": "Raw series: docdb_connections_open (every label, latest value)",
       "gridPos": {
         "x": 0,
-        "y": 23,
+        "y": 45,
         "w": 24,
         "h": 10
       },

@@ -7,8 +7,8 @@ summary: >-
   Joins DocumentDB's $currentOp open-connection list to the audit log's
   authenticate events by client ip:port, so idle connections, which carry no
   user of their own, are attributed to the database user that opened them. A
-  scheduled VPC Lambda exports a gauge per user and app to Grafana Cloud over
-  OTLP. Ships a dashboard.
+  scheduled VPC Lambda exports active, idle and total connections per user and
+  app, plus each user's roles, to Grafana Cloud over OTLP. Ships a dashboard.
 status: alpha
 platform: aws
 deliverable: lambda-zip

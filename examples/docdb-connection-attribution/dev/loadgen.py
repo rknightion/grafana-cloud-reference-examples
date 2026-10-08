@@ -13,7 +13,7 @@ Run it from somewhere that can reach the cluster (same VPC, or a VPN into it):
   export DOCDB_CA_FILE=global-bundle.pem          # the RDS CA bundle, downloaded beforehand
 
   uv run dev/loadgen.py setup                     # create lab users, seed a collection
-  uv run dev/loadgen.py load 600                  # 10 minutes: two busy apps and one leaking app
+  uv run dev/loadgen.py load 600                  # 10 minutes: busy apps, a slow report, a leak
   uv run dev/loadgen.py monitor-user <name>       # optional: least-privilege attributor user
 """
 
@@ -30,11 +30,20 @@ from pymongo import MongoClient
 
 LAB_USERS: dict[str, list[dict[str, str]]] = {
     "app_orders": [{"role": "readWrite", "db": "labdb"}],
-    "app_reports": [{"role": "read", "db": "labdb"}],
+    "app_reports": [{"role": "read", "db": "labdb"}, {"role": "read", "db": "analytics"}],
     "app_leaky": [{"role": "readWrite", "db": "labdb"}],
 }
-# The least privilege that can run the $currentOp aggregation stage for every user.
-MONITOR_ROLES = [{"role": "clusterMonitor", "db": "admin"}, {"role": "read", "db": "admin"}]
+# A custom role carrying only viewUser, so the function can read every user's roles without
+# being able to change any of them.
+VIEW_USERS_ROLE = "viewUsersOnly"
+VIEW_USERS_PRIVILEGES = [{"resource": {"db": "admin", "collection": ""}, "actions": ["viewUser"]}]
+# The least privilege that can run the $currentOp aggregation stage for every user, plus the
+# role lookup.
+MONITOR_ROLES = [
+    {"role": "clusterMonitor", "db": "admin"},
+    {"role": "read", "db": "admin"},
+    {"role": VIEW_USERS_ROLE, "db": "admin"},
+]
 
 
 def _client(user: str, password: str, app: str, **kw: Any) -> MongoClient[dict[str, Any]]:
@@ -73,13 +82,22 @@ def setup() -> None:
     orders = client.labdb.orders
     if orders.estimated_document_count() < 1000:
         orders.insert_many({"order_id": i, "customer": f"c{i % 97}"} for i in range(1000))
+    # Big enough that a full $group takes long enough to be caught running by a snapshot.
+    events = client.labdb.events
+    if events.estimated_document_count() < 200_000:
+        events.insert_many({"i": i, "c": i % 97, "pad": "x" * 200} for i in range(200_000))
 
 
 def monitor_user(name: str) -> None:
     password = os.environ.get("MONITOR_USER_PASSWORD")
     if not password:
         sys.exit("set MONITOR_USER_PASSWORD, then store the same value in the attributor's secret")
-    _upsert_user(_admin().admin, name, password, MONITOR_ROLES)
+    admin = _admin().admin
+    existing = {r["role"] for r in admin.command("rolesInfo", 1)["roles"]}
+    verb = "updateRole" if VIEW_USERS_ROLE in existing else "createRole"
+    admin.command(verb, VIEW_USERS_ROLE, privileges=VIEW_USERS_PRIVILEGES, roles=[])
+    print(f"{verb} {VIEW_USERS_ROLE}")
+    _upsert_user(admin, name, password, MONITOR_ROLES)
 
 
 def _busy(user: str, app: str, stop: threading.Event, pause_s: float) -> None:
@@ -88,6 +106,15 @@ def _busy(user: str, app: str, stop: threading.Event, pause_s: float) -> None:
     while not stop.is_set():
         orders.find_one({"customer": f"c{random.randint(0, 96)}"})
         stop.wait(pause_s)
+
+
+def _slow_report(stop: threading.Event) -> None:
+    # Long-running scans, so some connections are active when a snapshot lands.
+    client = _client("app_reports", os.environ["LAB_USER_PASSWORD"], "reports-scan", maxPoolSize=3)
+    events = client.labdb.events
+    pipeline = [{"$group": {"_id": "$c", "n": {"$sum": 1}, "len": {"$sum": {"$strLenCP": "$pad"}}}}]
+    while not stop.is_set():
+        list(events.aggregate(pipeline))
 
 
 def _leak(stop: threading.Event, connections: int = 25) -> None:
@@ -108,6 +135,8 @@ def load(seconds: int) -> None:
     workers = [
         threading.Thread(target=_busy, args=("app_orders", "orders-service", stop, 0.05)),
         threading.Thread(target=_busy, args=("app_reports", "reports-job", stop, 1.0)),
+        threading.Thread(target=_slow_report, args=(stop,)),
+        threading.Thread(target=_slow_report, args=(stop,)),
         threading.Thread(target=_leak, args=(stop,)),
     ]
     for w in workers:

@@ -9,6 +9,7 @@ import urllib.request
 from typing import Any, Protocol
 
 from pymongo import MongoClient
+from pymongo.errors import OperationFailure
 
 from grafana_cloud_common import ConfigError
 
@@ -27,6 +28,9 @@ CURRENT_OP_PIPELINE: list[dict[str, Any]] = [
         }
     },
 ]
+
+
+UNAUTHORIZED = 13
 
 
 class RdsSender(Protocol):
@@ -128,6 +132,20 @@ class ConnectionLister:
         # A database-level aggregate; iterating the cursor follows getMore, so a cluster with
         # more connections than one batch (101 documents) is not silently truncated.
         return list(self._client(host).admin.aggregate(CURRENT_OP_PIPELINE))
+
+    def users(self, host: str) -> list[dict[str, Any]] | None:
+        """Every user and its granted roles, or None when this user may not view other users.
+
+        Roles belong to the user, not the connection, so this is cluster-wide and read once a
+        run. It needs the viewUser action on admin, which clusterMonitor does not grant; without
+        it the connection counts still export and only the role series are missing.
+        """
+        try:
+            return list(self._client(host).admin.command("usersInfo", 1).get("users", []))
+        except OperationFailure as exc:
+            if exc.code == UNAUTHORIZED:
+                return None
+            raise
 
     def forget(self, host: str) -> None:
         client = self._clients.pop(host, None)

@@ -19,7 +19,7 @@ from opentelemetry.sdk.resources import Resource
 
 from grafana_cloud_common import RetryableError
 
-from .attribution import SeriesKey
+from .attribution import SeriesKey, UserRole
 
 SERVICE_NAME = "docdb-connection-attribution"
 
@@ -43,6 +43,7 @@ def export_snapshot(
     token: str,
     cluster: str,
     counts: Counter[SeriesKey],
+    roles: list[UserRole],
     audit_events: int,
     timeout_s: float = 10.0,
 ) -> None:
@@ -55,10 +56,23 @@ def export_snapshot(
                 "docdb.instance": key.instance,
                 "docdb.user": key.user,
                 "docdb.app_name": key.app,
+                "docdb.connection.state": key.state,
             }
             if key.client_address is not None:
                 attrs["client.address"] = key.client_address
             yield Observation(n, attrs)
+
+    def user_role(_: CallbackOptions) -> Iterable[Observation]:
+        for r in roles:
+            yield Observation(
+                1,
+                {
+                    "docdb.cluster": cluster,
+                    "docdb.user": r.user,
+                    "docdb.role": r.role,
+                    "docdb.role_db": r.db,
+                },
+            )
 
     def audit(_: CallbackOptions) -> Iterable[Observation]:
         yield Observation(audit_events, {"docdb.cluster": cluster})
@@ -70,7 +84,13 @@ def export_snapshot(
         "docdb.connections.open",
         callbacks=[connections],
         unit="{connection}",
-        description="Open DocumentDB connections by authenticated user and client app",
+        description="Open DocumentDB connections by authenticated user, client app and state",
+    )
+    meter.create_observable_gauge(
+        "docdb.user.role",
+        callbacks=[user_role],
+        unit="{role}",
+        description="1 per role granted to each DocumentDB user; join on docdb_user",
     )
     meter.create_observable_gauge(
         "docdb.attributor.audit_events",

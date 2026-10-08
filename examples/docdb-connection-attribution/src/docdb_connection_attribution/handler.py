@@ -17,7 +17,7 @@ from pymongo.errors import PyMongoError
 from grafana_cloud_common import ConfigError, configure, get_logger, sample_debug
 from grafana_cloud_common.aws import CredentialProvider, LambdaContext
 
-from .attribution import UNATTRIBUTED, SeriesKey, group_connections
+from .attribution import ACTIVE, UNATTRIBUTED, SeriesKey, UserRole, group_connections, user_roles
 from .audit import LogsSender, ingest
 from .config import Config
 from .docdb import (
@@ -72,6 +72,8 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
 
     counts: Counter[SeriesKey] = Counter()
     failed: list[str] = []
+    roles: list[UserRole] | None = None
+    roles_denied = False
     for instance, host in instance_endpoints(RDS, CONFIG.cluster_id):
         try:
             conns = LISTER.open_connections(host)
@@ -81,6 +83,21 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
             LISTER.forget(host)
             failed.append(instance)
             continue
+        if roles is None and not roles_denied:
+            # Users and roles are cluster-wide, so the first reachable instance answers for all.
+            try:
+                found = LISTER.users(host)
+            except PyMongoError as exc:
+                _LOG.warning("could not read user roles", instance=instance, cause=str(exc))
+                found = None
+            else:
+                if found is None:
+                    roles_denied = True
+                    _LOG.warning(
+                        "user roles skipped: the DocumentDB user lacks the viewUser action on admin"
+                    )
+            if found is not None:
+                roles = user_roles(found)
         users = STORE.lookup((instance, str(c.get("client"))) for c in conns if c.get("client"))
         counts += group_connections(
             instance,
@@ -102,12 +119,15 @@ def lambda_handler(event: dict[str, Any], context: LambdaContext) -> dict[str, A
         token=credential.token,
         cluster=CONFIG.cluster_id,
         counts=counts,
+        roles=roles or [],
         audit_events=ingested.events,
     )
 
     summary = {
         "connections": sum(counts.values()),
+        "active": sum(n for k, n in counts.items() if k.state == ACTIVE),
         "unattributed": sum(n for k, n in counts.items() if k.user == UNATTRIBUTED),
+        "role_grants": len(roles or []),
         "series": len(counts),
         "audit_events": ingested.events,
         "audit_complete": ingested.complete,
