@@ -1,6 +1,6 @@
 {
   "name": "@grafana-cloud/common",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Shared building blocks for the Node.js Grafana Cloud reference examples",
   "license": "Apache-2.0",
