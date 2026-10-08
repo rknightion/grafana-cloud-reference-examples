@@ -1,6 +1,6 @@
 [project]
 name = "grafana-cloud-example-generic-s3"
-version = "0.1.0"
+version = "0.2.0"
 description = "Ship files landing in an S3 bucket to Grafana Cloud Loki"
 readme = "README.md"
 requires-python = ">=3.14"
