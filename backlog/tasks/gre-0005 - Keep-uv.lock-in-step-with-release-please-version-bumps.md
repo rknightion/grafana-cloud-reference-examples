@@ -1,9 +1,10 @@
 ---
 id: GRE-0005
 title: Keep uv.lock in step with release-please version bumps
-status: To Do
+status: In Progress
 assignee: []
 created_date: '2026-10-08 10:57'
+updated_date: '2026-10-08 11:35'
 labels:
   - ci
 dependencies: []
@@ -18,7 +19,7 @@ Release PRs bump the version in each example's pyproject.toml but not the matchi
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 A merged release PR leaves uv.lock matching every workspace member's version
+- [x] #1 A merged release PR leaves uv.lock matching every workspace member's version
 - [ ] #2 just check on a fresh checkout after a release leaves the tree clean
 <!-- AC:END -->
 
@@ -27,3 +28,9 @@ Release PRs bump the version in each example's pyproject.toml but not the matchi
 - [ ] #1 just check
 - [ ] #2 just package-all
 <!-- DOD:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+Fixed in the 'bump workspace lock files with each release' commit: extra-files entries per package for uv.lock and package-lock.json, a just lint check that each package carries its entry, and just setup syncing with --locked. Updaters tested locally against the real lock files with release-please 17.6.0. AC 2 is proven only by the next real release PR: confirm its diff includes uv.lock, then close.
+<!-- SECTION:NOTES:END -->
