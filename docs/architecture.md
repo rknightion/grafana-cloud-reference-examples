@@ -129,6 +129,13 @@ fix(common-python): retry Loki 429 with the Retry-After delay
 A change to `common/` fans out as a minor bump on every consuming example,
 because the vendored code in their bundles changed.
 
+release-please bumps a package's own `pyproject.toml` or `package.json`, but not
+the workspace lock files, which record every member's version too. Each package
+therefore carries an `extra-files` entry for its line in `uv.lock` (or, for
+`common/nodejs`, in `package-lock.json`). `just lint` fails if one is missing,
+and `just setup` syncs with `--locked`, so a stale `uv.lock` fails CI instead of
+being rewritten silently.
+
 On a release, CI builds the bundle for each released component and attaches it to
 that component's GitHub Release, along with the bare `lambda.zip` for anyone who
 only needs the function code. Each bundle is built from a checkout of its own

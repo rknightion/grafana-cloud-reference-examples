@@ -19,7 +19,10 @@ default:
 
 # Install every dependency the gate needs: Python workspace, Node workspace, Terraform providers.
 setup:
-    uv sync --all-packages
+    # --locked fails on a uv.lock that no longer matches the workspace instead of
+    # silently rewriting it, so CI catches a release that left the lock stale.
+    # Run `uv lock` after changing a dependency or a workspace member.
+    uv sync --all-packages --locked
     npm ci
     just _tf-init-all
     just _tflint-init

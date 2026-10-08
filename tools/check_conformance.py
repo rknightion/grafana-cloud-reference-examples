@@ -14,6 +14,8 @@ Three jobs:
 3. Each CloudFormation template satisfies `common/cloudformation/conformance.yaml`.
    CloudFormation reuse here is by copy rather than nested stacks, so this is
    what stops the copies diverging on the things that matter.
+4. Every release-please package also bumps its own entry in the workspace lock
+   file, so a release does not leave uv.lock or package-lock.json stale.
 
 Exit 0 when everything passes, 1 otherwise, with every failure printed rather
 than stopping at the first.
@@ -26,6 +28,7 @@ import json
 import posixpath
 import re
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -37,6 +40,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES_DIR = REPO_ROOT / "examples"
 SCHEMA_PATH = REPO_ROOT / "common" / "schemas" / "example.schema.json"
 CONFORMANCE_PATH = REPO_ROOT / "common" / "cloudformation" / "conformance.yaml"
+RELEASE_CONFIG_PATH = REPO_ROOT / "release-please-config.json"
 
 # Files a non-planned example must have. A planned example is exempt from this
 # and nothing else.
@@ -705,6 +709,51 @@ def _check_environment_secrets(
 # --- Entry points --------------------------------------------------------------
 
 
+def check_release_lockfiles(config: dict[str, Any], repo_root: Path, report: Report) -> None:
+    """Each package's release must also bump its entry in the workspace lock file.
+
+    release-please updates a package's own manifest but not uv.lock or the root
+    package-lock.json, which both record every workspace member's version. The
+    uv.lock jsonpath matches `name.value` and stops at `version`, not
+    `version.value`: release-please's TOML parser wraps each value in an object,
+    and this is the only form that both finds and rewrites the entry
+    (googleapis/release-please#2455).
+    """
+    npm_lock_path = repo_root / "package-lock.json"
+    npm_lock = (
+        json.loads(npm_lock_path.read_text(encoding="utf-8")) if npm_lock_path.is_file() else {}
+    )
+
+    for path, package in sorted(config.get("packages", {}).items()):
+        where = f"release-please-config.json: {path}"
+        extra_files = [e for e in package.get("extra-files", []) if isinstance(e, dict)]
+        release_type = package.get("release-type")
+
+        if release_type == "python":
+            pyproject = repo_root / path / "pyproject.toml"
+            name = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]["name"]
+            expected = {
+                "type": "toml",
+                "path": "/uv.lock",
+                "jsonpath": f"$.package[?(@.name.value=='{name}')].version",
+            }
+        elif release_type == "node" and path in npm_lock.get("packages", {}):
+            expected = {
+                "type": "json",
+                "path": "/package-lock.json",
+                "jsonpath": f"$.packages['{path}'].version",
+            }
+        else:
+            continue
+
+        if expected not in extra_files:
+            report.fail(
+                where,
+                f"extra-files needs {json.dumps(expected)}, or every release leaves "
+                f"{expected['path'].lstrip('/')} recording the old version",
+            )
+
+
 def discover_examples() -> list[Path]:
     if not EXAMPLES_DIR.is_dir():
         return []
@@ -770,6 +819,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.cloudformation_only:
         check_root_readme(report)
+        check_release_lockfiles(
+            json.loads(RELEASE_CONFIG_PATH.read_text(encoding="utf-8")), REPO_ROOT, report
+        )
         validator = Draft202012Validator(json.loads(SCHEMA_PATH.read_text(encoding="utf-8")))
         for example_dir in discover_examples():
             manifest = check_manifest(example_dir, validator, report)

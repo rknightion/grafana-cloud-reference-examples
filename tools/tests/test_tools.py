@@ -11,7 +11,7 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 import yaml
@@ -591,3 +591,81 @@ class TestRepoState:
             check=False,
         )
         assert result.returncode == 0, result.stderr
+
+
+class TestReleaseLockfiles:
+    """release-please bumps a package's manifest but not the workspace lock files.
+
+    Without an extra-files entry per package, every release leaves uv.lock or
+    package-lock.json recording the old version, and the next `uv` or `npm` run
+    rewrites it, leaving a dirty tree after every release.
+    """
+
+    def _repo(self, tmp_path: Path) -> Path:
+        (tmp_path / "examples" / "an-example").mkdir(parents=True)
+        (tmp_path / "examples" / "an-example" / "pyproject.toml").write_text(
+            '[project]\nname = "grafana-cloud-example-an-example"\nversion = "0.1.0"\n',
+            encoding="utf-8",
+        )
+        (tmp_path / "common" / "nodejs").mkdir(parents=True)
+        (tmp_path / "package-lock.json").write_text(
+            '{"packages": {"common/nodejs": {"version": "0.1.0"}}}', encoding="utf-8"
+        )
+        return tmp_path
+
+    @staticmethod
+    def _config(python_extra: list[Any], node_extra: list[Any]) -> dict[str, Any]:
+        return {
+            "packages": {
+                "examples/an-example": {"release-type": "python", "extra-files": python_extra},
+                "common/nodejs": {"release-type": "node", "extra-files": node_extra},
+            }
+        }
+
+    UV_ENTRY: ClassVar[dict[str, str]] = {
+        "type": "toml",
+        "path": "/uv.lock",
+        "jsonpath": "$.package[?(@.name.value=='grafana-cloud-example-an-example')].version",
+    }
+    NPM_ENTRY: ClassVar[dict[str, str]] = {
+        "type": "json",
+        "path": "/package-lock.json",
+        "jsonpath": "$.packages['common/nodejs'].version",
+    }
+
+    def test_both_lock_entries_pass(self, tmp_path: Path) -> None:
+        report = conformance.Report()
+        conformance.check_release_lockfiles(
+            self._config(["pyproject.toml", self.UV_ENTRY], [self.NPM_ENTRY]),
+            self._repo(tmp_path),
+            report,
+        )
+        assert report.ok, report.failures
+
+    def test_a_python_package_without_the_uv_lock_entry_fails(self, tmp_path: Path) -> None:
+        report = conformance.Report()
+        conformance.check_release_lockfiles(
+            self._config(["pyproject.toml"], [self.NPM_ENTRY]), self._repo(tmp_path), report
+        )
+        assert not report.ok
+        assert "uv.lock" in report.failures[0]
+
+    def test_a_uv_lock_entry_for_another_project_fails(self, tmp_path: Path) -> None:
+        """A copied entry that still names the example it was copied from."""
+        wrong = {
+            **self.UV_ENTRY,
+            "jsonpath": self.UV_ENTRY["jsonpath"].replace("an-example", "other"),
+        }
+        report = conformance.Report()
+        conformance.check_release_lockfiles(
+            self._config([wrong], [self.NPM_ENTRY]), self._repo(tmp_path), report
+        )
+        assert not report.ok
+
+    def test_a_node_workspace_package_without_the_lock_entry_fails(self, tmp_path: Path) -> None:
+        report = conformance.Report()
+        conformance.check_release_lockfiles(
+            self._config([self.UV_ENTRY], []), self._repo(tmp_path), report
+        )
+        assert not report.ok
+        assert "package-lock.json" in report.failures[0]

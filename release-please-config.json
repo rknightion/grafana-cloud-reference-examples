@@ -8,27 +8,62 @@
   "packages": {
     "common/nodejs": {
       "component": "common-nodejs",
-      "release-type": "node"
+      "release-type": "node",
+      "extra-files": [
+        {
+          "type": "json",
+          "path": "/package-lock.json",
+          "jsonpath": "$.packages['common/nodejs'].version"
+        }
+      ]
     },
     "common/python": {
       "component": "common-python",
       "release-type": "python",
-      "extra-files": ["pyproject.toml"]
+      "extra-files": [
+        "pyproject.toml",
+        {
+          "type": "toml",
+          "path": "/uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='grafana-cloud-common')].version"
+        }
+      ]
     },
     "examples/adobe-aem": {
       "component": "adobe-aem",
       "release-type": "python",
-      "extra-files": ["pyproject.toml"]
+      "extra-files": [
+        "pyproject.toml",
+        {
+          "type": "toml",
+          "path": "/uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='grafana-cloud-example-adobe-aem')].version"
+        }
+      ]
     },
     "examples/docdb-connection-attribution": {
       "component": "docdb-connection-attribution",
       "release-type": "python",
-      "extra-files": ["pyproject.toml"]
+      "extra-files": [
+        "pyproject.toml",
+        {
+          "type": "toml",
+          "path": "/uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='grafana-cloud-example-docdb-connection-attribution')].version"
+        }
+      ]
     },
     "examples/generic-s3": {
       "component": "generic-s3",
       "release-type": "python",
-      "extra-files": ["pyproject.toml"]
+      "extra-files": [
+        "pyproject.toml",
+        {
+          "type": "toml",
+          "path": "/uv.lock",
+          "jsonpath": "$.package[?(@.name.value=='grafana-cloud-example-generic-s3')].version"
+        }
+      ]
     }
   },
   "changelog-sections": [
