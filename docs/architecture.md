@@ -143,6 +143,10 @@ To rebuild and re-attach the bundle for an existing release, dispatch the
 gh workflow run release.yml -f tag=generic-s3-v1.2.0
 ```
 
+Dispatch one tag at a time and wait for it to finish. The workflow's
+concurrency group keeps only one pending run, so a second dispatch while the
+first is still queued cancels the first.
+
 ### Non-breaking releases ship themselves
 
 On every push to `main`, the `arm-automerge` job in `release.yml` arms GitHub
