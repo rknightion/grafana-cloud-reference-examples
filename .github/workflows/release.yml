@@ -56,6 +56,99 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  # Releases anything non-breaking without a human. For every open release PR,
+  # either arm GitHub auto-merge, so the PR merges itself once ci-success passes
+  # on its current head, or, for a breaking change, disarm it and label it for a
+  # manual release. The required check is what "passes the tests" means here;
+  # nothing in this job merges directly.
+  #
+  # A separate job from release-please on purpose: a failure here must not stop
+  # attach-bundles from uploading a release that was already cut. It mints its
+  # own token because a token cannot cross jobs as an output.
+  arm-automerge:
+    needs: release-please
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write # exchanged for a tailnet identity and an OpenBao token
+    steps:
+      - name: Harden the runner (audit egress)
+        uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
+        with:
+          egress-policy: audit
+
+      # Must be the App token, never GITHUB_TOKEN. A merge armed by GITHUB_TOKEN
+      # fires no push event, so release-please would never run on the merge and
+      # the release would sit merged but untagged, with nothing reporting it.
+      - name: Mint a scoped release token
+        id: bao
+        uses: rknightion/.github/.github/actions/broker-token@c36bf7ded21407b0a5169ecb2502d6a3a385be30 # v1.25.5
+        with:
+          permission-set: release-please-grafana-cloud-reference-examples
+          tailscale-client-id: ${{ secrets.TS_WIF_CLIENT_ID }}
+          tailscale-audience: ${{ secrets.TS_WIF_AUDIENCE }}
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Arm or hold each release PR
+        env:
+          GH_TOKEN: ${{ steps.bao.outputs.token }}
+          REPO: ${{ github.repository }}
+          MANUAL_LABEL: "release: manual"
+        run: |
+          set -euo pipefail
+          gh label create "${MANUAL_LABEL}" --repo "${REPO}" --force \
+            --color B60205 --description "Breaking release PR; merge by hand"
+
+          # Only release-please's own branches in this repo. The label alone is
+          # not enough: anyone with triage access could put it on another PR.
+          # A draft is a human hold, and arming one errors, so drafts are skipped.
+          gh pr list --repo "${REPO}" --state open --label "autorelease: pending" \
+              --json number,title,body,headRefName,isCrossRepository,isDraft,autoMergeRequest \
+              --jq '.[] | select(.headRefName | startswith("release-please--")) | select(.isCrossRepository | not) | select(.isDraft | not)' \
+            | while IFS= read -r pr; do
+            number="$(jq -r .number <<<"${pr}")"
+            title="$(jq -r .title <<<"${pr}")"
+
+            # Title is "chore(main): release <component> <version>".
+            component="$(sed -nE 's/^chore\(main\): release (.+) ([0-9]+\.[0-9]+\.[0-9]+.*)$/\1/p' <<<"${title}")"
+            next="$(sed -nE 's/^chore\(main\): release (.+) ([0-9]+\.[0-9]+\.[0-9]+.*)$/\2/p' <<<"${title}")"
+            path="$(jq -r --arg c "${component}" \
+              '.packages | to_entries[] | select(.value.component == $c) | .key' release-please-config.json)"
+            current="$(jq -r --arg p "${path}" '.[$p] // empty' .release-please-manifest.json)"
+
+            reason=""
+            if [ -z "${component}" ] || [ -z "${path}" ] || [ -z "${current}" ]; then
+              # Fail closed: a PR this step cannot parse is never auto-merged.
+              reason="could not resolve component or current version from '${title}'"
+            elif [ "${next%%.*}" != "${current%%.*}" ]; then
+              reason="major version change ${current} -> ${next}"
+            # The version cannot carry this on its own: every component is 0.x
+            # with bump-minor-pre-major, so a breaking change is a minor bump.
+            # release-please writes this heading into the changelog instead.
+            elif jq -e '.body | test("BREAKING CHANGE")' <<<"${pr}" >/dev/null; then
+              reason="changelog has a BREAKING CHANGES section"
+            fi
+
+            if [ -n "${reason}" ]; then
+              echo "#${number} ${title}: holding for a manual release (${reason})"
+              # Disarm too: auto-merge armed on an earlier, non-breaking head
+              # stays armed when release-please rewrites the branch.
+              if [ "$(jq -r '.autoMergeRequest != null' <<<"${pr}")" = "true" ]; then
+                gh pr merge "${number}" --repo "${REPO}" --disable-auto
+              fi
+              gh pr edit "${number}" --repo "${REPO}" --add-label "${MANUAL_LABEL}"
+            else
+              echo "#${number} ${title}: arming auto-merge (${current} -> ${next})"
+              gh pr edit "${number}" --repo "${REPO}" --remove-label "${MANUAL_LABEL}" 2>/dev/null || true
+              gh pr merge "${number}" --repo "${REPO}" --auto --squash
+            fi
+          done
+
   # One job per released path, so an example's bundle lands on its own release.
   attach-bundles:
     needs: release-please

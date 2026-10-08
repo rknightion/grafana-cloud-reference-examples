@@ -133,6 +133,27 @@ On a release, CI builds the bundle for each released component and attaches it t
 that component's GitHub Release, along with the bare `lambda.zip` for anyone who
 only needs the function code.
 
+### Non-breaking releases ship themselves
+
+On every push to `main`, the `arm-automerge` job in `release.yml` arms GitHub
+auto-merge on each open release PR. The PR then merges itself once `ci-success`
+passes on its current head. A release PR is held instead, labelled
+`release: manual` and disarmed if it was already armed, when:
+
+- its changelog has a `BREAKING CHANGES` section, which is the only signal that
+  works pre-1.0, because `bump-minor-pre-major` makes a breaking change a minor
+  bump;
+- its major version differs from the manifest; or
+- its title cannot be resolved to a component and current version.
+
+A held PR is released by merging it by hand. To hold a non-breaking release,
+disable auto-merge on the PR; the next push to `main` re-arms it, so convert it
+to a draft if it must wait longer.
+
+Auto-merge is armed with the release App token, never `GITHUB_TOKEN`. A merge
+armed by `GITHUB_TOKEN` fires no `push`, so release-please would never run to cut
+the tag.
+
 ## Adding a new kind of deliverable
 
 `deliverable` in the manifest is an enum: `lambda-zip`, `container-image`,
