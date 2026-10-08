@@ -2,6 +2,9 @@
 # PR per component; merging it tags `<component>-vX.Y.Z`, creates the GitHub
 # Release, and the build job below attaches that component's bundle to it.
 #
+# Dispatching with `tag` rebuilds and re-attaches the bundle for one existing
+# release, which is the repair path for a release with missing or wrong assets.
+#
 # The mint step needs a permission set, policy and JWT role provisioned in the
 # secret broker for this repository, plus the TS_WIF_* repository secrets. Those
 # are provisioned out of band, per the operator runbook; if the mint step fails,
@@ -13,7 +16,13 @@ name: release
 on:
   push:
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to rebuild and re-attach, e.g. generic-s3-v1.2.0. Empty runs release-please as normal."
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -34,8 +43,7 @@ jobs:
       pull-requests: write # open and update the release PRs
       id-token: write # exchanged for a tailnet identity and an OpenBao token
     outputs:
-      paths_released: ${{ steps.release.outputs.paths_released }}
-      releases_created: ${{ steps.release.outputs.releases_created }}
+      tags: ${{ steps.plan.outputs.tags }}
     steps:
       # Mints a short-lived GitHub App installation token scoped to THIS repo.
       # The release PR's author becomes the App rather than github-actions[bot],
@@ -55,6 +63,31 @@ jobs:
           token: ${{ steps.bao.outputs.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+      # The tags to build bundles for. Each bundle is built from its own tag,
+      # never from the commit that triggered this run: when release merges land
+      # back to back, one run can cut several releases, and main at the
+      # triggering commit does not hold every released version.
+      - name: Plan bundle builds
+        id: plan
+        env:
+          OUTPUTS: ${{ toJSON(steps.release.outputs) }}
+          INPUT_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_TAG}" ]; then
+            # Validated before it is used as a checkout ref.
+            [[ "${INPUT_TAG}" =~ ^[a-z0-9]+(-[a-z0-9]+)*-v[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+              || { echo "::error::not a release tag: ${INPUT_TAG}"; exit 1; }
+            gh release view "${INPUT_TAG}" --repo "${REPO}" >/dev/null
+            tags="$(jq -cn --arg t "${INPUT_TAG}" '[$t]')"
+          else
+            tags="$(jq -c '[to_entries[] | select(.key | endswith("--tag_name")) | .value]' <<<"${OUTPUTS}")"
+          fi
+          echo "bundle builds: ${tags}"
+          echo "tags=${tags}" >> "$GITHUB_OUTPUT"
 
   # Releases anything non-breaking without a human. For every open release PR,
   # either arm GitHub auto-merge, so the PR merges itself once ci-success passes
@@ -170,10 +203,10 @@ jobs:
           done <<<"${prs}"
           exit "${failed}"
 
-  # One job per released path, so an example's bundle lands on its own release.
+  # One job per release tag, so an example's bundle lands on its own release.
   attach-bundles:
     needs: release-please
-    if: needs.release-please.outputs.releases_created == 'true'
+    if: needs.release-please.outputs.tags != '[]'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -183,29 +216,33 @@ jobs:
       # component's release without its asset.
       fail-fast: false
       matrix:
-        path: ${{ fromJSON(needs.release-please.outputs.paths_released) }}
+        tag: ${{ fromJSON(needs.release-please.outputs.tags) }}
     steps:
       - name: Harden the runner (audit egress)
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
         with:
           egress-policy: audit
 
-      - name: Checkout repository
+      - name: Checkout the release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: refs/tags/${{ matrix.tag }}
           persist-credentials: false
 
       - name: Skip anything that is not an example
         id: scope
         env:
-          RELEASED_PATH: ${{ matrix.path }}
+          TAG: ${{ matrix.tag }}
         run: |
-          case "${RELEASED_PATH}" in
-            examples/*) echo "example=${RELEASED_PATH#examples/}" >> "$GITHUB_OUTPUT" ;;
+          component="${TAG%-v*}"
+          if [ -d "examples/${component}" ]; then
+            echo "example=${component}" >> "$GITHUB_OUTPUT"
+            echo "version=${TAG##*-v}" >> "$GITHUB_OUTPUT"
+          else
             # A shared library release has no artefact of its own; consuming
             # examples pick the change up in their own next bundle.
-            *) echo "example=" >> "$GITHUB_OUTPUT" ;;
-          esac
+            echo "example=" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Install just
         if: steps.scope.outputs.example != ''
@@ -227,20 +264,20 @@ jobs:
       - name: Attach it to the release
         if: steps.scope.outputs.example != ''
         env:
-          # The release-please action already created this tag.
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ matrix.tag }}
           EXAMPLE: ${{ steps.scope.outputs.example }}
+          VERSION: ${{ steps.scope.outputs.version }}
         run: |
           set -euo pipefail
-          # Derive the tag from the built artefact rather than from an input, so
-          # the asset and the release can never disagree about the version.
-          bundle="$(find dist -name "${EXAMPLE}-*.zip" ! -name '*-lambda.zip' -print -quit)"
-          [ -n "${bundle}" ] || { echo "no bundle built for ${EXAMPLE}" >&2; exit 1; }
-          version="$(basename "${bundle}" .zip)"
-          version="${version#"${EXAMPLE}"-}"
-          tag="${EXAMPLE}-v${version}"
-          echo "attaching ${bundle} to ${tag}"
-          gh release upload "${tag}" \
-            "${bundle}" \
-            "dist/${EXAMPLE}-${version}-lambda.zip" \
-            --clobber
+          # The tag decides the version, and the build must agree with it. Never
+          # derive the tag from whatever was built: a build of the wrong tree
+          # then uploads, with --clobber, over an older release's assets.
+          bundle="dist/${EXAMPLE}-${VERSION}.zip"
+          lambda="dist/${EXAMPLE}-${VERSION}-lambda.zip"
+          [ -f "${bundle}" ] && [ -f "${lambda}" ] || {
+            echo "::error::${TAG}: expected ${bundle} and ${lambda}; built: $(ls dist)"
+            exit 1
+          }
+          echo "attaching ${bundle} to ${TAG}"
+          gh release upload "${TAG}" "${bundle}" "${lambda}" --clobber

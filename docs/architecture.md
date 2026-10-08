@@ -131,7 +131,17 @@ because the vendored code in their bundles changed.
 
 On a release, CI builds the bundle for each released component and attaches it to
 that component's GitHub Release, along with the bare `lambda.zip` for anyone who
-only needs the function code.
+only needs the function code. Each bundle is built from a checkout of its own
+release tag, not the commit that triggered the run, because one run can cut
+several releases when release merges land back to back. The job fails if the
+built version does not match the tag.
+
+To rebuild and re-attach the bundle for an existing release, dispatch the
+`release` workflow with its tag:
+
+```
+gh workflow run release.yml -f tag=generic-s3-v1.2.0
+```
 
 ### Non-breaking releases ship themselves
 
