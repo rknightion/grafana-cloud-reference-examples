@@ -150,6 +150,12 @@ A held PR is released by merging it by hand. To hold a non-breaking release,
 disable auto-merge on the PR; the next push to `main` re-arms it, so convert it
 to a draft if it must wait longer.
 
+Every release PR edits `.release-please-manifest.json`, so each merge leaves the
+other open release PRs conflicting. `always-update` in the release-please config
+makes release-please rewrite every open release PR on each push; without it, it
+pushes only when a PR's body changes, so a conflicted PR stays conflicted and
+never merges.
+
 Auto-merge is armed with the release App token, never `GITHUB_TOKEN`. A merge
 armed by `GITHUB_TOKEN` fires no `push`, so release-please would never run to cut
 the tag.

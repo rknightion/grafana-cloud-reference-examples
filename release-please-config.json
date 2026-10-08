@@ -4,6 +4,7 @@
   "include-component-in-tag": true,
   "include-v-in-tag": true,
   "bump-minor-pre-major": true,
+  "always-update": true,
   "packages": {
     "common/nodejs": {
       "component": "common-nodejs",
