@@ -3,5 +3,5 @@
   "common/python": "0.1.0",
   "examples/adobe-aem": "0.3.0",
   "examples/docdb-connection-attribution": "0.2.0",
-  "examples/generic-s3": "0.1.0"
+  "examples/generic-s3": "0.2.0"
 }
