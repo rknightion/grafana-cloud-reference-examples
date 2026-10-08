@@ -275,9 +275,9 @@ jobs:
           # then uploads, with --clobber, over an older release's assets.
           bundle="dist/${EXAMPLE}-${VERSION}.zip"
           lambda="dist/${EXAMPLE}-${VERSION}-lambda.zip"
-          [ -f "${bundle}" ] && [ -f "${lambda}" ] || {
+          if [ ! -f "${bundle}" ] || [ ! -f "${lambda}" ]; then
             echo "::error::${TAG}: expected ${bundle} and ${lambda}; built: $(ls dist)"
             exit 1
-          }
+          fi
           echo "attaching ${bundle} to ${TAG}"
           gh release upload "${TAG}" "${bundle}" "${lambda}" --clobber
