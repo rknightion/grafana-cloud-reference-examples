@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/rknightion/grafana-cloud-reference-examples/compare/adobe-aem-v0.2.0...adobe-aem-v0.3.0) (2026-10-08)
+
+
+### Features
+
+* **adobe-aem:** expose LOG_DEBUG_SAMPLE_RATE ([671a1d7](https://github.com/rknightion/grafana-cloud-reference-examples/commit/671a1d7b72ccaaa5b21a50fc4d6c9920f81be252))
+
 ## [0.2.0](https://github.com/rknightion/grafana-cloud-reference-examples/compare/adobe-aem-v0.1.0...adobe-aem-v0.2.0) (2026-09-11)
 
 
