@@ -36,7 +36,7 @@ concurrency:
 
 jobs:
   release-please:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write # create the release commit, tag and GitHub Release
@@ -100,7 +100,7 @@ jobs:
   # own token because a token cannot cross jobs as an output.
   arm-automerge:
     needs: release-please
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read
@@ -207,7 +207,7 @@ jobs:
   attach-bundles:
     needs: release-please
     if: needs.release-please.outputs.tags != '[]'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: write # upload release assets
