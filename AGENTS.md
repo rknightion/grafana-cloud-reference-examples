@@ -198,9 +198,9 @@ A change to `common/` fans out as a minor bump on every consuming example.
 
 ## Tracker
 
-Tasks are `GRE-NNNN` in `backlog/`. Read the **Agent fan-out protocol (canonical)** doc before
-designing a wave, and the **Wave operating model** doc for this repo's own rules; the operating model
-wins on anything about this repo. `backlog doc list --plain` shows both.
+Tasks are `GRE-NNNN` in `backlog/`; `backlog doc list --plain` lists the durable docs.
+
+Loops: the protocol lives in `~/repos/agent-docs/sources/loop/` (this board's "Loop protocol pointer" doc points there); this repository's loop facts are in `LOOP.md`.
 
 `backlog/` is committed and public: no credential, stack/org/tenant ID, email, public IP or
 internal hostname in a task or doc.
