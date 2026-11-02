@@ -6,7 +6,7 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 # tools with no manifest to live in are pinned here.
 
 # renovate: datasource=github-releases depName=hashicorp/terraform
-TERRAFORM_VERSION := "1.17.0"
+TERRAFORM_VERSION := "1.17.1"
 
 # renovate: datasource=github-releases depName=terraform-linters/tflint
 TFLINT_VERSION := "0.65.0"
