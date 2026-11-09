@@ -196,11 +196,19 @@ A change to `common/` fans out as a minor bump on every consuming example.
 - `common/terraform/modules/README.md` - read before adding or changing a shared module
 - `common/cloudformation/README.md` - read before adding a CloudFormation template
 
-## Tracker
+## Tracking work
 
-Tasks are `GRE-NNNN` in `backlog/`; `backlog doc list --plain` lists the durable docs.
+Work is tracked in this repository's GitHub issues; they are the only queue. Do not add a checklist
+file beside them.
 
-Loops: the protocol lives in `~/repos/agent-docs/sources/loop/` (this board's "Loop protocol pointer" doc points there); this repository's loop facts are in `LOOP.md`.
-
-`backlog/` is committed and public: no credential, stack/org/tenant ID, email, public IP or
-internal hostname in a task or doc.
+- A pull request body says how it relates to an issue, on a line of its own: `Closes #N` with the
+  `Acceptance evidence` table from `.github/pull_request_template.md` (one row for each acceptance
+  criterion of that issue), `Refs #N` when it only relates to one, or `Task: none, <reason>`.
+- A pull request that changes `.github/workflows/` or `.github/actions/` carries no closing keyword:
+  write `Task: none, <reason>`, with `Refs #N` beside it if you like.
+- Contributors never need the project board or the tracker tooling; a maintainer handles both.
+- Issues and pull requests are public, so they carry no credential, stack, org or tenant ID, email,
+  public IP or internal hostname. Write the shape, not the instance.
+- Older commits, docs and tests cite legacy board ids such as `GRE-0001`. `just issue <ID>` prints
+  the issue each one became; `.github/tracker/id-map.json` is the map. The DocumentDB lab findings
+  that `GRE-0001` cites are kept at `.github/tracker/history/doc-0003 - DocumentDB-connection-attribution-lab-findings-and-prototype.md`.
