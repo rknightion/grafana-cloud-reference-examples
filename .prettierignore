@@ -10,6 +10,9 @@ package-lock.json
 *.tfvars.example
 CHANGELOG.md
 
+# The tracker importer writes this map; keep its bytes as written.
+.github/tracker/id-map.json
+
 # Prettier owns TypeScript, JavaScript and JSON here, and nothing else.
 #
 # Markdown: prose reflowing is churn, and these READMEs ship to customers where a

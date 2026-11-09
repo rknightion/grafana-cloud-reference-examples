@@ -1,0 +1,30 @@
+{
+ "held": {},
+ "issues": {
+  "GRE-0001": {
+   "number": 62,
+   "url": "https://github.com/rknightion/grafana-cloud-reference-examples/issues/62"
+  },
+  "GRE-0002": {
+   "number": 59,
+   "url": "https://github.com/rknightion/grafana-cloud-reference-examples/issues/59"
+  },
+  "GRE-0003": {
+   "number": 60,
+   "url": "https://github.com/rknightion/grafana-cloud-reference-examples/issues/60"
+  },
+  "GRE-0004": {
+   "number": 63,
+   "url": "https://github.com/rknightion/grafana-cloud-reference-examples/issues/63"
+  },
+  "GRE-0005": {
+   "number": 61,
+   "url": "https://github.com/rknightion/grafana-cloud-reference-examples/issues/61"
+  }
+ },
+ "prefix": "GRE",
+ "repo": "rknightion/grafana-cloud-reference-examples",
+ "schema": 1,
+ "source_sha": "c1068ebd378e6c62726940a330e7b94bd7011bf4",
+ "synthetic": []
+}
