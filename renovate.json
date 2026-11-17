@@ -57,6 +57,11 @@
       "enabled": false
     },
     {
+      "description": "Hold TypeScript below 7: typescript-eslint rejects TS 7 at load time (https://github.com/typescript-eslint/typescript-eslint/issues/10940). Drop this rule when typescript-eslint supports it.",
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7"
+    },
+    {
       "description": "Dev tooling churns; batch it rather than one PR per bump.",
       "matchDepTypes": ["devDependencies", "dev"],
       "groupName": "dev tooling"
