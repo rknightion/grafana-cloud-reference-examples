@@ -1,0 +1,12 @@
+# Release automation owns the per-component changelogs and version state.
+/.release-please-manifest.json linguist-generated=true
+/common/nodejs/CHANGELOG.md linguist-generated=true
+/common/python/CHANGELOG.md linguist-generated=true
+/examples/adobe-aem/CHANGELOG.md linguist-generated=true
+/examples/docdb-connection-attribution/CHANGELOG.md linguist-generated=true
+/examples/generic-s3/CHANGELOG.md linguist-generated=true
+# just aem-dashboards regenerates these files and pytest checks the result.
+/examples/adobe-aem/dashboards/errors-and-operations.json linguist-generated=true
+/examples/adobe-aem/dashboards/traffic-and-performance.json linguist-generated=true
+# npm ci and the GitHub dependency review scan this exact lockfile.
+/package-lock.json linguist-generated=true
