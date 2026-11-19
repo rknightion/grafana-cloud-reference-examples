@@ -281,3 +281,16 @@ file beside them.
 - Older commits, docs and tests cite legacy board ids such as `GRE-0001`. `just issue <ID>` prints
   the issue each one became; `.github/tracker/id-map.json` is the map. The DocumentDB lab findings
   that `GRE-0001` cites are kept at `.github/tracker/history/doc-0003 - DocumentDB-connection-attribution-lab-findings-and-prototype.md`.
+
+## Cursor Cloud specific instructions
+
+The Build runs `just cloud-bootstrap </dev/null` with the Python, Node and Terraform tooling used
+by CI. It installs the locked workspaces, public Terraform providers and TFLint plugin.
+
+- Run `just cloud-run just fmt-check test </dev/null` for a fast check. Run
+  `just cloud-run just lint tf-validate package-all </dev/null` for conformance, local IaC
+  validation and example bundles.
+- The full gate is `just cloud-run just check package-all </dev/null`. The publication scan needs
+  the maintainer's private identity pattern set and full Git history. Use hosted CI for that check.
+- Keep live AWS deployment and Grafana Cloud telemetry out of the development environment. Terraform
+  and CloudFormation checks use locally installed tools and require no stack credentials.
