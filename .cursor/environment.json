@@ -12,6 +12,7 @@
     "registry.npmjs.org",
     "registry.terraform.io",
     "release-assets.githubusercontent.com",
-    "releases.hashicorp.com"
+    "releases.hashicorp.com",
+    "tuf-repo-cdn.sigstore.dev"
   ]
 }
