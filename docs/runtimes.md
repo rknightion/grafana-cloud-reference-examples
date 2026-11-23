@@ -39,13 +39,13 @@ repo's defaults, not a fact to trust indefinitely.
 
 | Runtime | Identifier | Projected deprecation |
 | --- | --- | --- |
+| Python 3.15 | `python3.15` | 2029-06-30 |
 | Python 3.14 | `python3.14` | 2029-06-30 |
 | Python 3.13 | `python3.13` | 2029-06-30 |
 | OS-only (Go, Rust) | `provided.al2023` | 2029-06-30 |
 | Python 3.12 | `python3.12` | 2028-10-31 |
 | Node.js 24 | `nodejs24.x` | 2028-04-30 |
 | Node.js 22 | `nodejs22.x` | 2027-04-30 |
-| Python 3.15 | `python3.15` | preview, not scheduled |
 | Node.js 26 | `nodejs26.x` | preview, not scheduled |
 
 The same list, with GA/preview classification, lives in
@@ -65,19 +65,28 @@ their own configuration where a reviewer will see it.
 
 ```hcl
 # Terraform
-runtime               = "python3.15"
+runtime               = "nodejs26.x"
 allow_preview_runtime = true
 ```
 
 ```
 # CloudFormation
---parameter-overrides LambdaRuntime=python3.15 AllowPreviewRuntime=true
+--parameter-overrides LambdaRuntime=nodejs26.x AllowPreviewRuntime=true
 ```
 
 Without the gate, both IaC paths fail before creating anything, with the reason.
 In Terraform that is a `lifecycle.precondition` on the function; in
 CloudFormation it is a `WaitCondition` that cannot succeed, because
 CloudFormation has no assertion primitive.
+
+## Python floors
+
+The examples build, test and ship on `python3.15`, and every package requires it.
+`generic-s3` and `adobe-aem` are pure Python, so their templates still offer the older
+GA Python runtimes for customers who pinned one. That is why `tool.ruff.target-version`
+stays at the oldest GA Python in `conformance.yaml`, enforced by
+`common/python/tests/test_syntax_floor.py`. `docdb-connection-attribution` bundles
+compiled wheels and offers `python3.15` only.
 
 ## Go and Rust: there is no managed runtime, and that is fine
 

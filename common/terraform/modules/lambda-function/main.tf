@@ -9,7 +9,7 @@ locals {
   # Preview runtimes are gated rather than banned. A caller that wants one has
   # to say so explicitly, which puts the "no SLA, no support" decision in the
   # caller's code where a reviewer will see it.
-  preview_runtimes = ["python3.15", "nodejs26.x"]
+  preview_runtimes = ["nodejs26.x"]
   is_preview       = contains(local.preview_runtimes, var.runtime)
 
   log_group_name = "/aws/lambda/${var.name}"

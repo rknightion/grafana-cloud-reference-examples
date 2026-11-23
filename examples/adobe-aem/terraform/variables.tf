@@ -294,11 +294,10 @@ variable "lambda_zip_path" {
 variable "runtime" {
   description = <<-EOT
     Lambda runtime. Must match `runtime.identifier` in example.yaml; `just lint`
-    fails if the two disagree. Set it to python3.15 plus
-    allow_preview_runtime = true to try the preview runtime.
+    fails if the two disagree.
   EOT
   type        = string
-  default     = "python3.14"
+  default     = "python3.15"
 }
 
 variable "allow_preview_runtime" {

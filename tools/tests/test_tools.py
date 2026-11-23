@@ -221,8 +221,8 @@ class TestConformanceRules:
             "t.yaml",
             {
                 "LambdaRuntime": {
-                    "Default": "python3.15",
-                    "AllowedValues": ["python3.14", "python3.15"],
+                    "Default": "nodejs26.x",
+                    "AllowedValues": ["python3.14", "nodejs26.x"],
                 }
             },
             rules,

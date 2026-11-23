@@ -218,15 +218,13 @@ Parameters:
   # --- Runtime and sizing ---------------------------------------------------
   LambdaRuntime:
     Type: String
-    Default: python3.14
+    Default: python3.15
     AllowedValues:
       - python3.15
-      - python3.14
     Description: >-
       Runtime identifier. The default is the longest-lived GA managed runtime.
-      python3.15 and nodejs26.x are public preview: no SLA, no technical
-      support, and AWS advises against production use, so selecting one also
-      requires AllowPreviewRuntime. Check the live deprecation table at
+      This package is built for python3.15 only, because its compiled wheels
+      load on no other version. Check the live deprecation table at
       https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
 
   AllowPreviewRuntime:
@@ -300,9 +298,7 @@ Conditions:
   # A preview runtime selected without the opt-in makes this true, and the guard
   # resource below then fails the stack with a message that says why.
   PreviewRuntimeNotPermitted: !And
-    - !Or
-      - !Equals [!Ref LambdaRuntime, python3.15]
-      - !Equals [!Ref LambdaRuntime, nodejs26.x]
+    - !Equals [!Ref LambdaRuntime, nodejs26.x]
     - !Equals [!Ref AllowPreviewRuntime, "false"]
 
 Resources:

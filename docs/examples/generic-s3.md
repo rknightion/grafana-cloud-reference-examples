@@ -50,7 +50,7 @@ token.
 
 ## What this creates in your AWS account
 
-- A Lambda function (Python 3.14, arm64) and its execution role
+- A Lambda function (Python 3.15, arm64) and its execution role
 - A CloudWatch log group with an explicit retention. There is deliberately no never-expire option:
   that is a slow-growing bill nobody notices
 - An SQS queue in front of the function, plus a dead-letter queue

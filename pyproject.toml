@@ -8,7 +8,7 @@ name = "grafana-cloud-reference-examples"
 version = "0.0.0"
 description = "Reference examples for integrating systems with Grafana Cloud"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 license = "Apache-2.0"
 dependencies = []
 
@@ -18,6 +18,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 bypass-selection = true
+
+[tool.uv]
+# 0.13.6 is the first uv that knows CPython 3.15.2, the interpreter pinned in
+# .python-version. setup-uv reads this constraint in CI.
+required-version = ">=0.13.6"
 
 [tool.uv.workspace]
 # Every Python example is a member. `just new-example` appends to this list;
@@ -92,7 +97,7 @@ select = [
 "**/testing.py" = ["S105", "S106"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.15"
 strict = true
 warn_unreachable = true
 # conftest.py is excluded because every tests/ directory has one and they all

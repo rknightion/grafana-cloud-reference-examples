@@ -14,10 +14,7 @@ platform: aws
 deliverable: lambda-zip
 
 runtime:
-  identifier: python3.14
-  # Preview runtimes carry no SLA and no support, so they are never the default.
-  # Set this on a deployment to try one: `lambda_runtime = "python3.15"`.
-  preview_alternative: python3.15
+  identifier: python3.15
   architecture: arm64
 
 lambda:
