@@ -51,7 +51,7 @@ jobs:
       # "action_required".
       - name: Mint a scoped release token
         id: bao
-        uses: rknightion/.github/.github/actions/broker-token@3aee36ed9f327d9238e387c7af7da9ec5369a263 # v1.25.31
+        uses: rknightion/.github/.github/actions/broker-token@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
         with:
           permission-set: release-please-grafana-cloud-reference-examples
           tailscale-client-id: ${{ secrets.TS_WIF_CLIENT_ID }}
@@ -116,7 +116,7 @@ jobs:
       # the release would sit merged but untagged, with nothing reporting it.
       - name: Mint a scoped release token
         id: bao
-        uses: rknightion/.github/.github/actions/broker-token@3aee36ed9f327d9238e387c7af7da9ec5369a263 # v1.25.31
+        uses: rknightion/.github/.github/actions/broker-token@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
         with:
           permission-set: release-please-grafana-cloud-reference-examples
           tailscale-client-id: ${{ secrets.TS_WIF_CLIENT_ID }}
@@ -246,7 +246,7 @@ jobs:
 
       - name: Install just
         if: steps.scope.outputs.example != ''
-        uses: rknightion/.github/.github/actions/setup-just@3aee36ed9f327d9238e387c7af7da9ec5369a263 # v1.25.31
+        uses: rknightion/.github/.github/actions/setup-just@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
 
       - name: Install uv
         if: steps.scope.outputs.example != ''
