@@ -25,19 +25,19 @@ variable "runtime" {
     Lambda runtime identifier. Defaults to the longest-lived GA managed runtime.
 
     Deprecation dates as published by AWS, for planning only:
+      python3.15      2029-06-30
       python3.14      2029-06-30
       python3.13      2029-06-30
       nodejs24.x      2028-04-30
       nodejs22.x      2027-04-30
       provided.al2023 2029-06-30   (OS clock, not a language clock - best for Go/Rust)
-      python3.15      preview, not scheduled
       nodejs26.x      preview, not scheduled
 
     Check the live table before relying on any of these:
     https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
   EOT
   type        = string
-  default     = "python3.14"
+  default     = "python3.15"
 
   validation {
     condition = contains([

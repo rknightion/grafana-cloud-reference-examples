@@ -255,7 +255,7 @@ A change to `common/` fans out as a minor bump on every consuming example.
 
 - release-please opens a release PR per component; merging it creates the tag. Do not hand-edit or
   hand-tag a release.
-- Python 3.14 locally, matching the default runtime. Node 24.
+- Python 3.15 locally (pinned in `.python-version`), matching the default runtime. Node 24.
 - `uv` and `npm ci` only. No `pip install` into the workspace.
 
 ## Deeper references

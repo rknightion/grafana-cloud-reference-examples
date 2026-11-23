@@ -3,7 +3,7 @@ name = "grafana-cloud-example-adobe-aem"
 version = "0.3.0"
 description = "Ship Adobe Experience Manager Cloud Service logs from S3 to Grafana Cloud Loki"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 license = "Apache-2.0"
 
 # grafana-cloud-common is a workspace path dependency and is vendored into the

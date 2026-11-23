@@ -82,7 +82,7 @@ Pick **one** of `terraform/` or `cloudformation/`. They deploy the same thing.
 
 ## What this creates in your AWS account
 
-- A Lambda function (Python 3.14, arm64, 1024 MB, 600 s timeout) and its
+- A Lambda function (Python 3.15, arm64, 1024 MB, 600 s timeout) and its
   execution role
 - A CloudWatch log group with an explicit retention. There is deliberately no
   never-expire option: that is a slow-growing bill nobody notices

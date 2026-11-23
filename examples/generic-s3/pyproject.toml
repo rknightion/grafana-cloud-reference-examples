@@ -3,7 +3,7 @@ name = "grafana-cloud-example-generic-s3"
 version = "0.2.0"
 description = "Ship files landing in an S3 bucket to Grafana Cloud Loki"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 license = "Apache-2.0"
 
 # grafana-cloud-common is a workspace path dependency and is vendored into the

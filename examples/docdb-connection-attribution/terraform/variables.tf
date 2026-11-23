@@ -204,16 +204,15 @@ variable "lambda_zip_path" {
 variable "runtime" {
   description = <<-EOT
     Lambda runtime. Must match `runtime.identifier` in example.yaml; `just
-    lint` fails if the two disagree. Set it to python3.15 plus
-    allow_preview_runtime = true to try the preview runtime.
+    lint` fails if the two disagree.
   EOT
   type        = string
-  default     = "python3.14"
+  default     = "python3.15"
 
   validation {
-    # The package requires Python 3.14 or later.
-    condition     = contains(["python3.14", "python3.15"], var.runtime)
-    error_message = "runtime must be python3.14, or python3.15 with allow_preview_runtime = true."
+    # The package is built for Python 3.15, and its compiled wheels load on no other.
+    condition     = contains(["python3.15"], var.runtime)
+    error_message = "runtime must be python3.15."
   }
 }
 

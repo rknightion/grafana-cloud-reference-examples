@@ -17,6 +17,7 @@
 # https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html
 runtimes:
   ga:
+    python3.15: 2029-06-30
     python3.14: 2029-06-30
     python3.13: 2029-06-30
     python3.12: 2028-10-31
@@ -29,7 +30,6 @@ runtimes:
   preview:
     # No Lambda SLA, no technical support, AWS advises against production use.
     # A template may offer these only alongside an AllowPreviewRuntime gate.
-    python3.15: null
     nodejs26.x: null
 
 # Parameters every template must declare, so a customer who has deployed one

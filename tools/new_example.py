@@ -33,7 +33,7 @@ NAME_PATTERN = re.compile(r"^[a-z][a-z0-9-]{1,48}[a-z0-9]$")
 # Kept in step with common/cloudformation/conformance.yaml. A scaffolded example
 # must not start life on a runtime that is about to be deprecated.
 DEFAULT_RUNTIME = {
-    "python": "python3.14",
+    "python": "python3.15",
     "nodejs": "nodejs24.x",
     "go": "provided.al2023",
 }

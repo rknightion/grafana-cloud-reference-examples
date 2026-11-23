@@ -6,7 +6,7 @@ name = "grafana-cloud-common"
 version = "0.2.0"
 description = "Shared building blocks for the Grafana Cloud reference examples"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.15"
 license = "Apache-2.0"
 
 # Deliberately empty. The core modules are standard library only. boto3 is
