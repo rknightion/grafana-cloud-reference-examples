@@ -27,7 +27,7 @@ jobs:
   actionlint:
     permissions:
       contents: read
-    uses: rknightion/.github/.github/workflows/actionlint.yml@3aee36ed9f327d9238e387c7af7da9ec5369a263 # v1.25.31
+    uses: rknightion/.github/.github/workflows/actionlint.yml@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
 
   # Skipped while this repo is private: CodeQL uploads SARIF to the Security tab, and code
   # scanning on a private repo needs GitHub Advanced Security. The failure is "Code scanning is not
@@ -41,7 +41,7 @@ jobs:
       packages: read
       actions: read
       contents: read
-    uses: rknightion/.github/.github/workflows/codeql.yml@3aee36ed9f327d9238e387c7af7da9ec5369a263 # v1.25.31
+    uses: rknightion/.github/.github/workflows/codeql.yml@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
     with:
       languages: >-
         [{"language":"python","build-mode":"none"},
@@ -80,7 +80,7 @@ jobs:
         run: command -v rg >/dev/null 2>&1 || sudo apt-get install -y ripgrep
 
       - name: Install just
-        uses: rknightion/.github/.github/actions/setup-just@3aee36ed9f327d9238e387c7af7da9ec5369a263 # v1.25.31
+        uses: rknightion/.github/.github/actions/setup-just@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -152,7 +152,7 @@ jobs:
           persist-credentials: false
 
       - name: Install just
-        uses: rknightion/.github/.github/actions/setup-just@3aee36ed9f327d9238e387c7af7da9ec5369a263 # v1.25.31
+        uses: rknightion/.github/.github/actions/setup-just@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
 
       - name: Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -190,7 +190,7 @@ jobs:
       contents: read
       issues: read
       pull-requests: read
-    uses: rknightion/.github/.github/workflows/ac-evidence.yml@8f00b7fb896191e598f12ed565395697c539add1 # v1.26.9
+    uses: rknightion/.github/.github/workflows/ac-evidence.yml@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
 
   # The lines a pull request adds carry no identifier, email address, public address or credential
   # shape. The reusable fails on any event but pull_request, so it runs on pull requests only.
@@ -199,7 +199,7 @@ jobs:
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
-    uses: rknightion/.github/.github/workflows/privacy-sweep.yml@8f00b7fb896191e598f12ed565395697c539add1 # v1.26.9
+    uses: rknightion/.github/.github/workflows/privacy-sweep.yml@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
 
   # The Backlog.md board is retired: issues are the queue. A pull request may delete files under
   # backlog/ or move them out, never add or change one there. Reads the file list from the API, so
@@ -245,7 +245,7 @@ jobs:
       contents: read
       security-events: write
       actions: read
-    uses: rknightion/.github/.github/workflows/zizmor.yml@e5b9f15bc8ccafdbad75e623bbd0dbb27127f049 # v1.28.0
+    uses: rknightion/.github/.github/workflows/zizmor.yml@b8a49e837c591099a98530180ab1050e89b29b23 # v1.31.8
     with:
       enforce: true
 
