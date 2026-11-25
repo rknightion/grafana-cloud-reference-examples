@@ -27,15 +27,6 @@ setup:
     just _tf-init-all
     just _tflint-init
 
-# Install the CI toolchains and reuse the public dependency bootstrap in Cursor Cloud.
-cloud-bootstrap:
-    bash .cursor/bootstrap.sh {{ quote(TERRAFORM_VERSION) }} {{ quote(TFLINT_VERSION) }}
-
-# Run a command with the prepared Cursor Cloud toolchains.
-[positional-arguments]
-cloud-run command *args:
-    bash .cursor/bootstrap.sh {{ quote(TERRAFORM_VERSION) }} {{ quote(TFLINT_VERSION) }} "$@"
-
 # Format Python, TypeScript, Terraform and this justfile in place.
 [group('check')]
 fmt:
