@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.3.0](https://github.com/rknightion/grafana-cloud-reference-examples/compare/common-python-v0.2.0...common-python-v0.3.0) (2026-11-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* docdb-connection-attribution now accepts only python3.15, because its bundled compiled wheels are built for that version.
+
+### Features
+
+* move the examples to python 3.15 ([#87](https://github.com/rknightion/grafana-cloud-reference-examples/issues/87)) ([3ba061d](https://github.com/rknightion/grafana-cloud-reference-examples/commit/3ba061d56828a844f7f4009f2d1c2edf7ee24f63))
+
 ## [0.2.0](https://github.com/rknightion/grafana-cloud-reference-examples/compare/common-python-v0.1.0...common-python-v0.2.0) (2026-10-08)
 
 
