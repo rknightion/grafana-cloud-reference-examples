@@ -334,7 +334,7 @@ requires-dist = [
 
 [[package]]
 name = "grafana-cloud-example-generic-s3"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "examples/generic-s3" }
 dependencies = [
     { name = "boto3" },
