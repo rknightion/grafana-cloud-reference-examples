@@ -30,9 +30,14 @@
   ],
   "packageRules": [
     {
-      "description": "Group the shared reusable workflows, which release together.",
+      "description": "Group the shared reusable workflows, which release together. The hub releases daily and its pins are the only way this repo gets CI fixes, so the weekly Monday schedule and the PR, branch and hourly limits must not hold them back. Open first when limits do apply.",
       "matchPackageNames": ["rknightion/.github"],
-      "groupName": "shared workflows"
+      "groupName": "shared workflows",
+      "schedule": ["at any time"],
+      "prPriority": 10,
+      "prConcurrentLimit": 0,
+      "branchConcurrentLimit": 0,
+      "prHourlyLimit": 0
     },
     {
       "description": "The Terraform version is pinned on both sides - the justfile and the CI setup step - so they must move together or one pin becomes a lie.",
