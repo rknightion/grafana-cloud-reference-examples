@@ -313,7 +313,7 @@ requires-dist = [
 
 [[package]]
 name = "grafana-cloud-example-docdb-connection-attribution"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "examples/docdb-connection-attribution" }
 dependencies = [
     { name = "boto3" },
