@@ -27,7 +27,7 @@ jobs:
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
-    uses: rknightion/.github/.github/workflows/actionlint.yml@0cc331c4859b1056333df332c7d31d23c9060c4c # v1.36.0
+    uses: rknightion/.github/.github/workflows/actionlint.yml@c2c3d98e29e9f340620d8ef396a8e6dcb45bda68 # v1.37.0
 
   # `just check` is the whole local gate, and this job is what makes it enforced
   # rather than aspirational. Not using the shared just-check reusable: that
@@ -158,7 +158,7 @@ jobs:
     if: github.event_name == 'pull_request'
     permissions:
       contents: read
-    uses: rknightion/.github/.github/workflows/privacy-sweep.yml@0cc331c4859b1056333df332c7d31d23c9060c4c # v1.36.0
+    uses: rknightion/.github/.github/workflows/privacy-sweep.yml@c2c3d98e29e9f340620d8ef396a8e6dcb45bda68 # v1.37.0
 
   # zizmor fails a pull request on any finding (enforce); push runs upload SARIF instead.
   zizmor:
@@ -166,7 +166,7 @@ jobs:
       contents: read
       security-events: write
       actions: read
-    uses: rknightion/.github/.github/workflows/zizmor.yml@0cc331c4859b1056333df332c7d31d23c9060c4c # v1.36.0
+    uses: rknightion/.github/.github/workflows/zizmor.yml@c2c3d98e29e9f340620d8ef396a8e6dcb45bda68 # v1.37.0
     with:
       enforce: true
 

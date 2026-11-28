@@ -12,4 +12,4 @@ jobs:
     permissions:
       security-events: write # upload the SARIF results
       id-token: write # OIDC, to publish results and the badge to the OpenSSF API
-    uses: rknightion/.github/.github/workflows/scorecard.yml@0cc331c4859b1056333df332c7d31d23c9060c4c # v1.36.0
+    uses: rknightion/.github/.github/workflows/scorecard.yml@c2c3d98e29e9f340620d8ef396a8e6dcb45bda68 # v1.37.0
