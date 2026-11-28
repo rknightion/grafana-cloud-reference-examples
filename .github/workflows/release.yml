@@ -16,6 +16,14 @@ name: release
 on:
   push:
     branches: [main]
+    # Workflow, Renovate and dependency-pin commits never carry a release; a release commit always changes CHANGELOG.md, so it is never filtered.
+    paths-ignore:
+      - ".github/**"
+      - "renovate.json"
+      - "renovate.json5"
+      - ".renovaterc"
+      - ".renovaterc.json"
+      - ".renovaterc.json5"
   workflow_dispatch:
     inputs:
       tag:
@@ -106,11 +114,6 @@ jobs:
       contents: read
       id-token: write # exchanged for a tailnet identity and an OpenBao token
     steps:
-      - name: Harden the runner (audit egress)
-        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
-        with:
-          egress-policy: audit
-
       # Must be the App token, never GITHUB_TOKEN. A merge armed by GITHUB_TOKEN
       # fires no push event, so release-please would never run on the merge and
       # the release would sit merged but untagged, with nothing reporting it.
@@ -218,11 +221,6 @@ jobs:
       matrix:
         tag: ${{ fromJSON(needs.release-please.outputs.tags) }}
     steps:
-      - name: Harden the runner (audit egress)
-        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
-        with:
-          egress-policy: audit
-
       - name: Checkout the release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
